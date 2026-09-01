@@ -12,6 +12,7 @@ import LeaderboardPage from './pages/LeaderboardPage'
 import ProgressPage from './pages/ProgressPage'
 import ProfilePage from './pages/ProfilePage'
 import PostTestPage from './pages/PostTestPage'
+import TeacherDashboardPage from './pages/TeacherDashboardPage'
 
 function LoadingScreen() {
   return (
@@ -24,6 +25,8 @@ function LoadingScreen() {
   )
 }
 
+function TeacherRoute({ children }) { const { user, loading } = useAuth(); if (loading) return <LoadingScreen/>; return user?.role === 'instructor' ? children : <Navigate to="/quest" replace/> }
+
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth()
   if (loading) return <LoadingScreen />
@@ -34,11 +37,12 @@ function AppRoutes() {
   const { user } = useAuth()
   return (
     <Routes>
-      <Route path="/" element={user ? <HomePage/> : <Navigate to="/login" replace/>}/>
+      <Route path="/" element={user ? (user.role === 'instructor' ? <Navigate to="/teacher" replace/> : <HomePage/>) : <Navigate to="/login" replace/>}/>
       <Route path="/login" element={user ? <Navigate to="/" replace/> : <LoginPage/>}/>
       <Route path="/forgot-password" element={user ? <Navigate to="/" replace/> : <ForgotPasswordPage/>}/>
       <Route path="/reset-password" element={user ? <Navigate to="/" replace/> : <ResetPasswordPage/>}/>
       <Route path="/dashboard" element={<Navigate to="/quest" replace/>}/>
+      <Route path="/teacher" element={<TeacherRoute><TeacherDashboardPage/></TeacherRoute>}/>
 
       <Route path="/quest" element={
         <PrivateRoute><QuestPage/></PrivateRoute>

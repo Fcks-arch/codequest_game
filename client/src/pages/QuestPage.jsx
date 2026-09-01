@@ -1,4 +1,3 @@
-
 import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import axios from 'axios'
@@ -6,7 +5,7 @@ import QuestScene from '../components/QuestScene'
 import IslandMap from '../components/IslandMap'
 import { Ico, Pill, XpBar } from '../components/UI'
 import { useAuth } from '../context/AuthContext'
-import { completedLessonIdsWithLocalFallback, isActivityUnlocked } from '../utils/questProgress'
+import { completedLessonIdsWithLocalFallback, isActivityUnlocked, getIslandStatuses } from '../utils/questProgress'
 
 const EMPTY_MODULES = []
 
@@ -20,11 +19,7 @@ export default function QuestPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
-  // Helper to check if a module/island is completely cleared
-  const isModuleCleared = (mod, completedIds) => {
-    if (!mod || !mod.activities || mod.activities.length === 0) return false
-    return mod.activities.every(act => completedIds.has(Number(act.id)))
-  }
+  const userUnlocked = user?.unlocked_module || 1
 
   useEffect(() => {
     Promise.all([axios.get('/api/lessons/modules'), axios.get('/api/progress')])
@@ -42,30 +37,21 @@ export default function QuestPage() {
           return
         }
 
-        // 2. Automatically find the highest unlocked or active island
-        const userUnlocked = user?.unlocked_module || 1
-        let activeModuleId = 1
-
-        for (let i = 0; i < fetchedModules.length; i++) {
-          const mod = fetchedModules[i]
-          const prevMod = fetchedModules[i - 1]
-
-          const prevCleared = !prevMod || isModuleCleared(prevMod, completedIds)
-          const isUnlocked = mod.id === 1 || userUnlocked >= mod.id || prevCleared
-
-          if (isUnlocked) {
-            activeModuleId = mod.id
-          } else {
-            // Stop at the first locked module
-            break
-          }
+        // 2. Automatically find the highest unlocked island, walked in
+        // syllabus order so every island in the chain gets the same check —
+        // not just the first couple.
+        const statuses = getIslandStatuses(fetchedModules, completedIds, userUnlocked)
+        let activeModuleId = fetchedModules[0]?.id ?? 1
+        for (const mod of fetchedModules) {
+          if (!statuses.get(mod.id)?.unlocked) break
+          activeModuleId = mod.id
         }
 
         setSelectedId(activeModuleId)
       })
       .catch(() => setError('The quest map could not be loaded. Please make sure the database is connected.'))
       .finally(() => setLoading(false))
-  }, [islandId, user?.unlocked_module])
+  }, [islandId, userUnlocked])
 
   const selectedModule = useMemo(
     () => modules.find(module => module.id === selectedId) || modules[0],
@@ -74,6 +60,10 @@ export default function QuestPage() {
 
   const completedIds = useMemo(() => completedLessonIdsWithLocalFallback(progress), [progress])
   const clearedCount = completedIds.size
+  const islandStatuses = useMemo(
+    () => getIslandStatuses(modules, completedIds, userUnlocked),
+    [modules, completedIds, userUnlocked]
+  )
 
   const selectModule = module => {
     setSelectedId(module.id)
@@ -108,7 +98,7 @@ export default function QuestPage() {
           ) : error ? (
             <div className="landing-quest__message landing-quest__message--error">{error}</div>
           ) : (
-            <IslandMap modules={modules} progress={progress} selectedId={selectedId} onSelect={selectModule} />
+            <IslandMap modules={modules} progress={progress} selectedId={selectedId} onSelect={selectModule} unlockedOverride={userUnlocked} />
           )}
         </section>
 
@@ -126,15 +116,11 @@ export default function QuestPage() {
                 </div>
               ) : selectedModule.activities.map((activity, index) => {
                 const completed = completedIds.has(Number(activity.id))
-                
-                // Allow activity to unlock if:
-                // - Island 1 (mod.id === 1)
-                // - User's DB unlocked_module allows it
-                // - Previous island was fully cleared
-                const previousModule = modules.find(m => m.id === selectedModule.id - 1)
-                const isPrevModuleCleared = !previousModule || isModuleCleared(previousModule, completedIds)
-                const isIslandUnlocked = selectedModule.id === 1 || (user?.unlocked_module >= selectedModule.id) || isPrevModuleCleared
 
+                // The island itself must be unlocked (previous island in the
+                // syllabus order cleared, or a teacher override), and within
+                // an unlocked island, activities unlock one at a time.
+                const isIslandUnlocked = islandStatuses.get(selectedModule.id)?.unlocked ?? false
                 const unlocked = isIslandUnlocked && isActivityUnlocked(index, selectedModule.activities, completedIds)
 
                 return (

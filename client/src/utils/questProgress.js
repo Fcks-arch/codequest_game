@@ -23,14 +23,53 @@ export function isActivityUnlocked(index, activities, completedIds) {
   return !!previousActivity && completedIds.has(Number(previousActivity.id))
 }
 
-export function findNextActivity(modules, progress) {
-  const completed = completedLessonIds(progress)
+export function isModuleCleared(module, completedIds) {
+  if (!module || !module.activities || module.activities.length === 0) return false
+  return module.activities.every(activity => completedIds.has(Number(activity.id)))
+}
+
+// Single source of truth for island (module) lock/unlock state, used by both
+// the island map and the activity list so they never disagree.
+//
+// Rule: island N unlocks once every earlier island that actually has
+// activities has been fully cleared — checked in syllabus order
+// (order_index), not by id, since ids aren't guaranteed to be sequential.
+// The first island is always unlocked. A teacher's manual override
+// (user.unlocked_module) can force-unlock further islands. Islands with no
+// activities yet ("coming soon" placeholders) are transparent for chaining:
+// they don't block whichever island comes after them.
+export function getIslandStatuses(modules, completedIds, unlockedOverride = 1) {
+  const statuses = new Map()
   let previousComplete = true
+  const override = Number(unlockedOverride) || 1
+
+  modules.forEach((module, index) => {
+    const activityCount = module.activities.length
+    const isComplete = isModuleCleared(module, completedIds)
+    const unlocked = index === 0 || previousComplete || override >= module.id
+
+    statuses.set(module.id, {
+      isComplete,
+      unlocked,
+      status: isComplete ? 'completed' : unlocked ? 'current' : 'locked'
+    })
+
+    // Only real (non-placeholder) islands gate the chain — an empty
+    // "coming soon" island shouldn't permanently lock everything after it.
+    if (activityCount > 0) {
+      previousComplete = previousComplete && isComplete
+    }
+  })
+
+  return statuses
+}
+
+export function findNextActivity(modules, progress, unlockedOverride = 1) {
+  const completed = completedLessonIds(progress)
+  const statuses = getIslandStatuses(modules, completed, unlockedOverride)
 
   for (const module of modules) {
-    const activityCount = module.activities.length
-    const moduleUnlocked = previousComplete && activityCount > 0
-    if (!moduleUnlocked) break
+    if (!statuses.get(module.id)?.unlocked) continue
 
     for (let index = 0; index < module.activities.length; index++) {
       const activity = module.activities[index]
@@ -38,9 +77,6 @@ export function findNextActivity(modules, progress) {
       if (!isActivityUnlocked(index, module.activities, completed)) break
       return activity
     }
-
-    previousComplete = module.activities.length > 0 &&
-      module.activities.every(activity => completed.has(activity.id))
   }
 
   return null

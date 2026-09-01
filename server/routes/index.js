@@ -5,6 +5,8 @@ const auth     = require('../controllers/authController')
 const lessons  = require('../controllers/lessonController')
 const progress = require('../controllers/progressController')
 const code     = require('../controllers/codeController')
+const teacher  = require('../controllers/teacherController')
+
 
 // ── AUTH ──
 router.post('/auth/register', auth.register)
@@ -23,6 +25,14 @@ router.get('/lessons/:id/next', authMiddleware, lessons.getNextLesson)
 router.get('/lessons/:id',    authMiddleware, lessons.getLesson)
 router.post('/lessons',       authMiddleware, instructorOnly, lessons.createLesson)
 router.put('/lessons/:id',    authMiddleware, instructorOnly, lessons.updateLesson)
+
+// ── TEACHER CONSOLE ──
+router.get('/teacher/overview', authMiddleware, instructorOnly, teacher.overview)
+router.get('/teacher/students', authMiddleware, instructorOnly, teacher.students)
+router.get('/teacher/students/:id', authMiddleware, instructorOnly, teacher.student)
+router.get('/teacher/analytics', authMiddleware, instructorOnly, teacher.analytics)
+router.get('/teacher/leaderboard', authMiddleware, instructorOnly, teacher.leaderboard)
+
 
 // ── CODE EXECUTION ──
 router.post('/execute/java',  authMiddleware, code.executeJava)

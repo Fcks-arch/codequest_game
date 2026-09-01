@@ -1,6 +1,6 @@
 import React from 'react'
 import { Ico } from './UI'
-import { completedLessonIdsWithLocalFallback } from '../utils/questProgress'
+import { completedLessonIdsWithLocalFallback, getIslandStatuses } from '../utils/questProgress'
 
 function Island({ module, status, selected, onSelect }) {
   const isLocked = status === 'locked'
@@ -35,9 +35,9 @@ function Island({ module, status, selected, onSelect }) {
   )
 }
 
-export default function IslandMap({ modules, progress, selectedId, onSelect }) {
+export default function IslandMap({ modules, progress, selectedId, onSelect, unlockedOverride }) {
   const completedIds = completedLessonIdsWithLocalFallback(progress)
-  let previousComplete = true
+  const statuses = getIslandStatuses(modules, completedIds, unlockedOverride)
 
   return (
     <div className="quest-map">
@@ -45,11 +45,7 @@ export default function IslandMap({ modules, progress, selectedId, onSelect }) {
       <div className="quest-map__path" aria-hidden="true" />
       <div className="quest-map__islands">
         {modules.map(module => {
-          const activityCount = module.activities.length
-          const isComplete = activityCount > 0 && module.activities.every(activity => completedIds.has(Number(activity.id)))
-          const unlocked = previousComplete && (activityCount > 0 || module.order_index === 1)
-          const status = isComplete ? 'completed' : unlocked ? 'current' : 'locked'
-          previousComplete = previousComplete && isComplete
+          const status = statuses.get(module.id)?.status ?? 'locked'
           return (
             <Island
               key={module.id}

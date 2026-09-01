@@ -1,10 +1,10 @@
- import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
 import { useAuth } from '../context/AuthContext'
 import IslandMap from '../components/IslandMap'
 import { C, Ico, Pill, XpBar } from '../components/UI'
-import { completedLessonIdsWithLocalFallback, isActivityUnlocked } from '../utils/questProgress'
+import { completedLessonIdsWithLocalFallback, isActivityUnlocked, getIslandStatuses } from '../utils/questProgress'
 
 const EMPTY_MODULES = []
 
@@ -20,18 +20,29 @@ export default function DashboardPage() {
   const [selectedId, setSelectedId] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const userUnlocked = user?.unlocked_module || 1
 
   useEffect(() => {
     Promise.all([axios.get('/api/lessons/modules'), axios.get('/api/progress')])
       .then(([moduleResponse, progressResponse]) => {
-        setModules(moduleResponse.data)
+        const fetchedModules = moduleResponse.data || []
+        const completedIds = completedLessonIdsWithLocalFallback(progressResponse.data || [])
+        setModules(fetchedModules)
         setProgress(progressResponse.data)
-        const firstPlayable = moduleResponse.data.find(module => module.activities.length > 0)
-        setSelectedId(firstPlayable?.id || moduleResponse.data[0]?.id || null)
+
+        // Land on the furthest island the player has actually unlocked,
+        // walked in syllabus order across every island in the chain.
+        const statuses = getIslandStatuses(fetchedModules, completedIds, userUnlocked)
+        let activeModuleId = fetchedModules[0]?.id ?? null
+        for (const mod of fetchedModules) {
+          if (!statuses.get(mod.id)?.unlocked) break
+          activeModuleId = mod.id
+        }
+        setSelectedId(activeModuleId)
       })
       .catch(() => setError('The quest map could not be loaded. Please make sure the updated database schema has been applied.'))
       .finally(() => setLoading(false))
-  }, [])
+  }, [userUnlocked])
 
   const selectedModule = useMemo(
     () => modules.find(module => Number(module.id) === Number(selectedId)) || modules[0],
@@ -42,6 +53,10 @@ export default function DashboardPage() {
     [progress]
   )
   const clearedCount = completedIds.size
+  const islandStatuses = useMemo(
+    () => getIslandStatuses(modules, completedIds, userUnlocked),
+    [modules, completedIds, userUnlocked]
+  )
 
   const selectModule = module => {
     setSelectedId(module.id)
@@ -78,7 +93,7 @@ export default function DashboardPage() {
             <div><p className="section-kicker">YOUR SYLLABUS</p><h2>Quest map</h2></div>
             <span>Islands are lessons · activities are levels</span>
           </div>
-          {loading ? <div className="quest-loading">Loading your islands…</div> : error ? <div className="quest-error">{error}</div> : <IslandMap modules={modules} progress={progress} selectedId={selectedId} onSelect={selectModule} />}
+          {loading ? <div className="quest-loading">Loading your islands…</div> : error ? <div className="quest-error">{error}</div> : <IslandMap modules={modules} progress={progress} selectedId={selectedId} onSelect={selectModule} unlockedOverride={userUnlocked} />}
         </section>
 
         {!loading && !error && selectedModule && (
@@ -93,7 +108,8 @@ export default function DashboardPage() {
                 <div className="activity-empty">This island is being prepared. Clear the earlier islands to continue your quest.</div>
               ) : selectedModule.activities.map((activity, index) => {
                 const completed = completedIds.has(Number(activity.id))
-                const unlocked = isActivityUnlocked(index, selectedModule.activities, completedIds)
+                const isIslandUnlocked = islandStatuses.get(selectedModule.id)?.unlocked ?? false
+                const unlocked = isIslandUnlocked && isActivityUnlocked(index, selectedModule.activities, completedIds)
                 return (
                   <button
                     type="button"

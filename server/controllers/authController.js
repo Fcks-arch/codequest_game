@@ -8,7 +8,9 @@ const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID)
 
 // POST /api/auth/register
 async function register(req, res) {
-  const { name, email, password, role, section } = req.body
+  const { name, email, password, role, section, teacherCode } = req.body
+  const requestedRole = role === 'instructor' ? 'instructor' : 'student'
+  if (requestedRole === 'instructor' && (!process.env.TEACHER_SIGNUP_CODE || teacherCode !== process.env.TEACHER_SIGNUP_CODE)) return res.status(403).json({ message: 'Invalid teacher private code.' })
   if (!name || !email || !password)
     return res.status(400).json({ message: 'Name, email, and password are required.' })
 
@@ -20,16 +22,16 @@ async function register(req, res) {
     const hashed = await bcrypt.hash(password, 10)
     const [result] = await db.query(
       'INSERT INTO users (name, email, password, role, section) VALUES (?, ?, ?, ?, ?)',
-      [name, email, hashed, role || 'student', section || null]
+      [name, email, hashed, requestedRole, section || null]
     )
 
     const token = jwt.sign(
-      { id: result.insertId, name, role: role || 'student' },
+      { id: result.insertId, name, role: requestedRole },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     )
 
-    res.status(201).json({ token, user: { id: result.insertId, name, email, role: role || 'student', section } })
+    res.status(201).json({ token, user: { id: result.insertId, name, email, role: requestedRole, section } })
   } catch (err) {
     console.error(err)
     res.status(500).json({ message: 'Server error during registration.' })

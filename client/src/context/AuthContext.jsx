@@ -48,8 +48,8 @@ export function AuthProvider({ children }) {
     return res.data.user
   }
 
-  const register = async (name, email, password, section) => {
-    const res = await axios.post('/api/auth/register', { name, email, password, section, role: 'student' })
+  const register = async (name, email, password, section, role = 'student', teacherCode = '') => {
+    const res = await axios.post('/api/auth/register', { name, email, password, section, role, teacherCode })
     localStorage.setItem('cq_token', res.data.token)
     axios.defaults.headers.common['Authorization'] = `Bearer ${res.data.token}`
     setUser(res.data.user)
