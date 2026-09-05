@@ -3,13 +3,18 @@ const db = require('../config/db')
 // GET /api/lessons — all active lessons with guided steps
 async function getLessons(req, res) {
   try {
+    const islandId = Number(req.query.island)
+    const level = Number(req.query.level)
+    const hasLessonFilter = Number.isInteger(islandId) && Number.isInteger(level)
     const [lessons] = await db.query(
       `SELECT lessons.*, lesson_modules.title AS module_title, lesson_modules.color AS module_color,
               lesson_modules.order_index AS module_order
        FROM lessons
        JOIN lesson_modules ON lesson_modules.id = lessons.module_id
        WHERE lessons.is_active = TRUE AND lesson_modules.is_active = TRUE
-       ORDER BY lesson_modules.order_index, lessons.order_index`
+       ${hasLessonFilter ? 'AND lessons.module_id = ? AND lessons.order_index = ?' : ''}
+       ORDER BY lesson_modules.order_index, lessons.order_index`,
+      hasLessonFilter ? [islandId, level] : []
     )
 
     for (const lesson of lessons) {
@@ -48,16 +53,44 @@ async function getModules(req, res) {
        WHERE lessons.is_active = TRUE AND lesson_modules.is_active = TRUE
        ORDER BY lesson_modules.order_index, lessons.order_index`
     )
+    const [completionRows] = await db.query(
+      `SELECT lessons.module_id, COUNT(DISTINCT student_progress.lesson_id) AS completed_count
+       FROM lessons
+       LEFT JOIN student_progress
+         ON student_progress.lesson_id = lessons.id
+        AND student_progress.user_id = ?
+        AND student_progress.phase = 'completed'
+       WHERE lessons.is_active = TRUE
+       GROUP BY lessons.module_id`,
+      [req.user.id]
+    )
 
     const activitiesByModule = lessons.reduce((groups, lesson) => {
       ;(groups[lesson.module_id] ||= []).push(lesson)
       return groups
     }, {})
 
-    res.json(modules.map(module => ({
+    const completionCounts = new Map(
+      completionRows.map(row => [Number(row.module_id), Number(row.completed_count)])
+    )
+
+    res.json(modules.map((module, index) => {
+      const previousModule = modules[index - 1]
+      const previousActivities = previousModule
+        ? lessons.filter(lesson => Number(lesson.module_id) === Number(previousModule.id))
+        : []
+      const previousCompleted = previousModule
+        ? completionCounts.get(Number(previousModule.id)) || 0
+        : 0
+
+      return {
       ...module,
-      activities: activitiesByModule[module.id] || []
-    })))
+      activities: activitiesByModule[module.id] || [],
+      isUnlocked: index === 0 ||
+        previousCompleted >= previousActivities.length ||
+        previousCompleted >= 10
+      }
+    }))
   } catch (err) {
     console.error(err)
     res.status(500).json({ message: 'Error fetching lesson modules.' })
@@ -117,17 +150,19 @@ async function getLesson(req, res) {
     const lesson = rows[0]
     const [steps] = await db.query(
       'SELECT * FROM guided_steps WHERE lesson_id = ? ORDER BY step_order',
-      [lesson.id]
-    )
+      [req.params.id]
+    ).catch(() => [[ ]])
     const [concepts] = await db.query(
       'SELECT * FROM lesson_concepts WHERE lesson_id = ? ORDER BY order_index',
-      [lesson.id]
-    )
-    lesson.guided = steps
-    lesson.concepts = concepts
+      [Number(lesson.id)]
+    ).catch(() => [[ ]])
+
+    lesson.guided = Array.isArray(steps) ? steps : []
+    lesson.concepts = Array.isArray(concepts) ? concepts : []
 
     res.json(lesson)
   } catch (err) {
+    console.error('Error fetching lesson:', err)
     res.status(500).json({ message: 'Error fetching lesson.' })
   }
 }

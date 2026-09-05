@@ -4,7 +4,13 @@ const db = require('../config/db')
 async function getProgress(req, res) {
   try {
     const [rows] = await db.query(
-      'SELECT * FROM student_progress WHERE user_id = ?',
+      `SELECT student_progress.*, lessons.module_id,
+              lessons.order_index AS lesson_order,
+              lesson_modules.order_index AS module_order
+       FROM student_progress
+       JOIN lessons ON lessons.id = student_progress.lesson_id
+       JOIN lesson_modules ON lesson_modules.id = lessons.module_id
+       WHERE student_progress.user_id = ?`,
       [req.user.id]
     )
     res.json(rows)

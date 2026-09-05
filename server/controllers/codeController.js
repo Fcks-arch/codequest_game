@@ -37,6 +37,26 @@ public class Main {
         jump(0);
     }
 
+    public static void attack() {
+        emit("attack", "");
+    }
+
+    public static void pullLever() {
+        emit("pullLever", "");
+    }
+
+    public static void collectKey() {
+        emit("collectKey", "");
+    }
+
+    public static void useItem(String itemName) {
+        emit("useItem", itemName == null ? "" : itemName);
+    }
+
+    public static void defend() {
+        emit("defend", "");
+    }
+
     public static void say(String message) {
         emit("say", message.replace("\\n", " "));
     }
@@ -60,6 +80,11 @@ public class Main {
         public void moveDown(int amount) { Main.moveDown(amount); }
         public void jump(int amount) { Main.jump(amount); }
         public void jump() { Main.jump(); }
+        public void attack() { Main.attack(); }
+        public void pullLever() { Main.pullLever(); }
+        public void collectKey() { Main.collectKey(); }
+        public void useItem(String itemName) { Main.useItem(itemName); }
+        public void defend() { Main.defend(); }
         public void say(String message) { Main.say(message); }
         public void say(int message) { Main.say(message); }
         public void say(boolean message) { Main.say(message); }
@@ -83,6 +108,8 @@ function parseCommands(stdout) {
       const amount = Number(value)
       if (Number.isFinite(amount)) return [{ type, amount }]
     }
+    if (['attack', 'pullLever', 'collectKey', 'defend'].includes(type)) return [{ type }]
+    if (type === 'useItem') return [{ type, item: value }]
     return []
   })
 }
