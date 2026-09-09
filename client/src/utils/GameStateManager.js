@@ -1,9 +1,11 @@
+import axios from 'axios'
+
 export const MAX_MAP_TILES = 15
 const COMPLETED_LESSONS_KEY = 'codequest_completed_lessons'
 
 const LEVEL_START_SPAWNS = {
   1: { tileX: 0, tileY: 0 },
-  2: { tileX: 3, tileY: 0 },
+  2: { tileX: 2, tileY: 0 },
   3: { tileX: 7, tileY: 0 }
 }
 
@@ -43,4 +45,11 @@ export function markLessonCompleted(lessonId) {
   try {
     localStorage.setItem(COMPLETED_LESSONS_KEY, JSON.stringify([...completed]))
   } catch (_) {}
+}
+
+export function completeLesson(lessonId) {
+  const id = Number(lessonId)
+  if (!Number.isFinite(id)) return Promise.resolve()
+  markLessonCompleted(id)
+  return axios.post('/api/progress/complete', { lesson_id: id }).catch(() => {})
 }

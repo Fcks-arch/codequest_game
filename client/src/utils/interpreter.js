@@ -24,11 +24,31 @@ export class GameAPI {
       throw new Error('moveRight() needs a number.')
     this.onEvent({ type: 'moveRight', amount: n })
   }
-  jump(h = 0) {
+  jump(h = 1) {
     this.guard()
     if (typeof h !== 'number' || isNaN(h))
       throw new Error('jump() only accepts a number when you want a forward leap.')
     this.onEvent({ type: 'jump', amount: h })
+  }
+  attack() {
+    this.guard()
+    this.onEvent({ type: 'attack' })
+  }
+  pullLever() {
+    this.guard()
+    this.onEvent({ type: 'pullLever' })
+  }
+  collectKey() {
+    this.guard()
+    this.onEvent({ type: 'collectKey' })
+  }
+  useItem(itemName) {
+    this.guard()
+    this.onEvent({ type: 'useItem', item: String(itemName ?? '') })
+  }
+  defend() {
+    this.guard()
+    this.onEvent({ type: 'defend' })
   }
   say(m) {
     this.guard()
@@ -41,7 +61,7 @@ export function interpret(src, api) {
   try { ast = acorn.parse(src, { ecmaVersion: 2020 }) }
   catch (e) { return { error: 'Syntax error: ' + e.message } }
 
-  const allowed = new Set(['moveRight', 'jump', 'say'])
+  const allowed = new Set(['moveRight', 'jump', 'attack', 'pullLever', 'collectKey', 'useItem', 'defend', 'say'])
 
   function lk(sc, n) {
     let s = sc
@@ -122,7 +142,7 @@ export function interpret(src, api) {
           throw new Error('Only direct calls like moveRight() are supported.')
         const fn = node.callee.name
         if (!allowed.has(fn))
-          throw new Error(`"${fn}()" is not available. Try moveRight(), jump(), or say().`)
+          throw new Error(`"${fn}()" is not available. Try moveRight(), jump(), attack(), pullLever(), collectKey(), useItem(), defend(), or say().`)
         return api[fn](...node.arguments.map(a => ev(a, sc)))
       }
       default:

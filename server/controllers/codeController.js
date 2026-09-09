@@ -34,7 +34,7 @@ public class Main {
     }
 
     public static void jump() {
-        jump(0);
+      jump(1);
     }
 
     public static void attack() {
@@ -73,6 +73,10 @@ public class Main {
       say(Double.toString(message));
     }
 
+    public static void speak(String message) {
+      say(message);
+    }
+
     public static class Pip {
         public void moveRight(int amount) { Main.moveRight(amount); }
         public void moveLeft(int amount) { Main.moveLeft(amount); }
@@ -89,6 +93,7 @@ public class Main {
         public void say(int message) { Main.say(message); }
         public void say(boolean message) { Main.say(message); }
         public void say(double message) { Main.say(message); }
+        public void speak(String message) { Main.speak(message); }
     }
 
     public static void main(String[] args) {

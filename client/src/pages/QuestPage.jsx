@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import axios from 'axios'
 import QuestScene from '../components/QuestScene'
 import IslandMap from '../components/IslandMap'
@@ -13,9 +13,11 @@ export default function QuestPage() {
   const { user } = useAuth()
   const { islandId } = useParams() // Capture URL params like /island/2
   const navigate = useNavigate()
+  const location = useLocation()
+  const initialIslandId = location.state?.islandId || Number(new URLSearchParams(location.search).get('island')) || Number(localStorage.getItem('activeIslandId')) || 1
   const [modules, setModules] = useState(EMPTY_MODULES)
   const [progress, setProgress] = useState([])
-  const [selectedId, setSelectedId] = useState(null)
+  const [selectedIslandId, setSelectedIslandId] = useState(initialIslandId)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -33,41 +35,44 @@ export default function QuestPage() {
 
         // 1. If URL specifies an islandId (e.g. /island/3), select it
         if (islandId) {
-          setSelectedId(Number(islandId))
+          setSelectedIslandId(Number(islandId))
           return
         }
+
+        setSelectedIslandId(initialIslandId)
+        if (location.state?.islandId || location.search) return
 
         // 2. Automatically find the highest unlocked island, walked in
         // syllabus order so every island in the chain gets the same check —
         // not just the first couple.
-        const statuses = getIslandStatuses(fetchedModules, completedIds, userUnlocked)
+        const statuses = getIslandStatuses(fetchedModules, completedIds, userUnlocked, fetchedProgress)
         let activeModuleId = fetchedModules[0]?.id ?? 1
         for (const mod of fetchedModules) {
           if (!statuses.get(mod.id)?.unlocked) break
           activeModuleId = mod.id
         }
 
-        setSelectedId(activeModuleId)
+        setSelectedIslandId(activeModuleId)
       })
       .catch(() => setError('The quest map could not be loaded. Please make sure the database is connected.'))
       .finally(() => setLoading(false))
-  }, [islandId, userUnlocked])
+  }, [islandId, initialIslandId, location.search, location.state, userUnlocked])
 
   const selectedModule = useMemo(
-    () => modules.find(module => module.id === selectedId) || modules[0],
-    [modules, selectedId]
+    () => modules.find(module => module.id === selectedIslandId) || modules[0],
+    [modules, selectedIslandId]
   )
 
   const completedIds = useMemo(() => completedLessonIdsWithLocalFallback(progress), [progress])
   const clearedCount = completedIds.size
   const islandStatuses = useMemo(
-    () => getIslandStatuses(modules, completedIds, userUnlocked),
-    [modules, completedIds, userUnlocked]
+    () => getIslandStatuses(modules, completedIds, userUnlocked, progress),
+    [modules, completedIds, progress, userUnlocked]
   )
 
   const selectModule = module => {
-    setSelectedId(module.id)
-    navigate(`/island/${module.id}`)
+    setSelectedIslandId(module.id)
+    localStorage.setItem('activeIslandId', String(module.id))
   }
 
   return (
@@ -98,18 +103,18 @@ export default function QuestPage() {
           ) : error ? (
             <div className="landing-quest__message landing-quest__message--error">{error}</div>
           ) : (
-            <IslandMap modules={modules} progress={progress} selectedId={selectedId} onSelect={selectModule} unlockedOverride={userUnlocked} />
+            <IslandMap modules={modules} progress={progress} selectedId={selectedIslandId} onSelect={selectModule} unlockedOverride={userUnlocked} />
           )}
         </section>
 
         {!loading && !error && selectedModule && (
-          <section className="landing-activity-panel" style={{ '--module-color': selectedModule.color }}>
+          <section className="landing-activity-panel quest-level-panel" style={{ '--module-color': selectedModule.color }}>
             <div className="landing-activity-panel__intro">
               <p className="landing-eyebrow">Selected island</p>
               <h2>{selectedModule.title}</h2>
               <p>{selectedModule.description || 'Complete the activities below to unlock the next island.'}</p>
             </div>
-            <div className="landing-activity-list">
+            <div className="landing-activity-list quest-level-grid">
               {selectedModule.activities.length === 0 ? (
                 <div className="landing-quest__message">
                   This island is being prepared. Clear earlier islands to continue your quest.
@@ -122,24 +127,25 @@ export default function QuestPage() {
                 // an unlocked island, activities unlock one at a time.
                 const isIslandUnlocked = islandStatuses.get(selectedModule.id)?.unlocked ?? false
                 const unlocked = isIslandUnlocked && isActivityUnlocked(index, selectedModule.activities, completedIds)
+                const lessonRouteId = index + 1
 
                 return (
                   <button
                     type="button"
                     key={activity.id}
-                    className={`landing-activity-card ${completed ? 'landing-activity-card--complete' : ''}`}
+                    className={`landing-activity-card quest-level-card ${completed ? 'quest-level-card--complete' : unlocked ? 'quest-level-card--ready' : 'quest-level-card--locked'}`}
                     disabled={!unlocked}
-                    onClick={() => navigate(`/lesson/${activity.id}`)}
+                    onClick={() => navigate(`/lesson/${lessonRouteId}?island=${selectedIslandId}`, { state: { islandId: selectedIslandId, relativeLevel: lessonRouteId } })}
                   >
-                    <span className="landing-activity-card__number">
-                      {completed ? <Ico n="check" s={17} c="#fff" /> : unlocked ? index + 1 : <Ico n="lock" s={15} c="#5e3a24" />}
+                    <span className="landing-activity-card__number quest-level-card__number">
+                      {completed ? <Ico n="check" s={17} c="#fff" /> : unlocked ? index + 1 : <span className="quest-level-card__lock"><Ico n="lock" s={15} c="#CBD5E1" /></span>}
                     </span>
                     <span className="landing-activity-card__copy">
                       <small>{activity.level_label || `Activity ${index + 1}`}</small>
                       <strong>{activity.title}</strong>
-                      <em>{completed ? 'Cleared' : unlocked ? 'Ready to play' : 'Complete earlier activities first'}</em>
+                      <em className={completed ? 'quest-level-status--cleared' : unlocked ? 'quest-level-status--ready' : 'quest-level-status--locked'}>{completed ? 'Cleared' : unlocked ? 'Ready to play' : 'Complete earlier activities first'}</em>
                     </span>
-                    <Pill bg="rgba(245,213,71,.2)" col="#c9a227">+{activity.xp_reward || 100} XP</Pill>
+                    <span className="quest-level-xp">+{activity.xp_reward || 100} XP</span>
                     <Ico n="chevRight" s={18} c={unlocked ? '#5e3a24' : '#a88418'} />
                   </button>
                 )

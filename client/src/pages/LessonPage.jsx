@@ -1,22 +1,31 @@
 import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import axios from 'axios'
 import { useAuth } from '../context/AuthContext'
 import GameCanvas, { startBgMusic, stopBgMusic } from '../components/GameCanvas'
 import CodeEditor, { lintJava } from '../components/CodeEditor'
-import { getLevelStartSpawn, isLessonCompleted, markLessonCompleted } from '../utils/GameStateManager'
+import { getLevelStartSpawn, markLessonCompleted } from '../utils/GameStateManager'
+import { getLessonByIslandAndLevel } from '../data/lessons'
+import IslandClearedModal from '../components/IslandClearedModal'
 import { C, Ico, Pill, Toast } from '../components/UI'
 
 function javaLabel(value) {
   return String(value || '').replace(/JavaScript Foundations/g, 'JAVA FOUNDATIONS').replace(/JavaScript/g, 'Java')
 }
 
-/* ── Get background image for lesson based on module_id ── */
-function getBackgroundForLesson(lesson) {
-  if (!lesson?.module_id) return '/assets/background.png'
-  const levelNum = lesson.module_id
-  if (levelNum === 1) return '/assets/background.png'
-  return `/assets/lvl${levelNum}.png`
+function getActiveIslandId(lesson, location) {
+  const stateIslandId = Number(location?.state?.islandId)
+  const lessonIslandId = Number(lesson?.moduleId ?? lesson?.module_id ?? lesson?.islandId)
+  const storedIslandId = Number(window.localStorage.getItem('activeIslandId'))
+  if (Number.isFinite(stateIslandId) && stateIslandId > 0) return stateIslandId
+  if (Number.isFinite(lessonIslandId) && lessonIslandId > 0) return lessonIslandId
+  if (Number.isFinite(storedIslandId) && storedIslandId > 0) return storedIslandId
+  return Number(location?.pathname?.match(/\/island\/(\d+)/)?.[1])
+}
+
+function getIslandRoute(lesson, location) {
+  const islandId = getActiveIslandId(lesson, location)
+  return Number.isFinite(islandId) && islandId > 0 ? `/island/${islandId}` : '/quest'
 }
 
 /* ── Shuffle helper for guided step choices ── */
@@ -74,36 +83,54 @@ function LessonBriefing({ lesson }) {
   )
 }
 
-function NextLevelButton({ onNext }) {
+function NextLevelButton({ onNext, isFinalLevel = false, isCleared = false, completed = false }) {
   return (
-    <button type="button" onClick={onNext} style={{
-      flex:1, background:C.emerald, color:'#fff', border:'none', borderRadius:9,
-      padding:'11px 9px', fontSize:12, fontWeight:700,
-      display:'flex', alignItems:'center', justifyContent:'center', gap:5, cursor:'pointer'
+    <button type="button" onClick={onNext} disabled={!isCleared && !completed} style={{
+      width:'100%', background:C.emerald, color:'#fff', border:'none', borderRadius:10,
+      padding:'12px 10px', fontSize:13, fontWeight:700,
+      display:'flex', alignItems:'center', justifyContent:'center', gap:5,
+      cursor:!isCleared && !completed ? 'not-allowed' : 'pointer', opacity:!isCleared && !completed ? .45 : 1
     }}>
-      <span>Next Level &gt;</span>
-      <Ico n="chevRight" s={12} c="#fff"/>
+      <span>{isFinalLevel ? 'Return to Map 🏆' : 'Next Level >'}</span>
+      <Ico n={isFinalLevel ? 'trophy' : 'chevRight'} s={12} c="#fff"/>
     </button>
   )
 }
 
-function explainCodeLine(line) {
+function explainCodeLine(line, lesson) {
   const code = String(line || '').trim()
   if (!code) return null
-  if (/^say\s*\(/.test(code)) return `${code} tells Pip to display this message before continuing.`
-  if (/^moveRight\s*\(/.test(code)) return `${code} moves Pip right by the supplied number of tiles.`
-  if (/^jump\s*\(/.test(code)) return `${code} makes Pip jump over the next obstacle or gap.`
-  if (/^int\s+\w+\s*=/.test(code)) return `${code} declares an integer value that can be reused later in the program.`
-  if (/^String\s+\w+\s*=/.test(code)) return `${code} declares a text value that can be shown with say().`
-  if (/^(?:double|float|long|boolean|char)\s+\w+\s*=/.test(code)) return `${code} declares a typed Java value for later use.`
-  return `${code} runs as the next statement in the program's sequence.`
+  const isIsland2 = lesson?.module_id === 2 || (Number(lesson?.id) >= 11 && Number(lesson?.id) <= 20)
+  if (/^say\s*\(/.test(code)) {
+    return isIsland2
+      ? `${code} — Pip calls out to announce his approach across the bridge and bypass the trap.`
+      : `${code} tells Pip to display this message before continuing.`
+  }
+  if (/^moveRight\s*\(/.test(code)) {
+    return isIsland2
+      ? `${code} — Pip strides across the bridge tiles toward the next checkpoint.`
+      : `${code} moves Pip right by the supplied number of tiles.`
+  }
+  if (/^jump\s*\(/.test(code)) {
+    return isIsland2
+      ? `${code} — Pip springs into the air to dodge the spike trap blocking the path.`
+      : `${code} makes Pip jump over the next obstacle or gap.`
+  }
+  if (/^(?:int|let|const|String|double|float|long|boolean)\s+\w+\s*=/.test(code)) {
+    return isIsland2
+      ? `${code} — Pip calculates the precise bridge span distance and stores it in memory.`
+      : `${code} declares a typed variable value that can be reused later in the program.`
+  }
+  return isIsland2
+    ? `${code} — Pip executes this step of the algorithm along the bridge route.`
+    : `${code} runs as the next statement in the program's sequence.`
 }
 
 function CompletionReview({ lesson, code }) {
   const selectedCode = String(code || '').trim() || '// No code was captured for this completion.'
   const codeBreakdown = selectedCode
     .split('\n')
-    .map(explainCodeLine)
+    .map(line => explainCodeLine(line, lesson))
     .filter(Boolean)
 
   return (
@@ -200,7 +227,7 @@ function validateLesson(lesson, events = [], code = '') {
 /* ════════════════════════════════
    GUIDED PANEL
    ════════════════════════════════ */
-function GuidedPanel({ lesson, onUnlock, onNext, onStepCorrect, onAllStepsDone, taskComplete, completedCode }) {
+function GuidedPanel({ lesson, onUnlock, onNext, onStepCorrect, onAllStepsDone, taskComplete, completedCode, isFinalLevel }) {
   const [stepIdx, setStepIdx] = useState(0)
   const [chosen, setChosen] = useState(null)
   const [built, setBuilt] = useState([])
@@ -220,6 +247,8 @@ function GuidedPanel({ lesson, onUnlock, onNext, onStepCorrect, onAllStepsDone, 
   }, [lesson.id])
 
   const step = guidedSteps[stepIdx]
+  const stepPrompt = String(step?.prompt || step?.question || '').trim()
+  const stepBriefing = String(step?.briefing || lesson?.briefing || '').trim()
 
   const options = useMemo(() => {
     if (!step) return []
@@ -272,7 +301,7 @@ function GuidedPanel({ lesson, onUnlock, onNext, onStepCorrect, onAllStepsDone, 
   const pct = guidedSteps.length > 0 ? (progress / guidedSteps.length) * 100 : 0
 
   return (
-    <div style={{ display:'flex', flexDirection:'column', height:'100%', overflow:'hidden' }}>
+    <div style={{ display:'flex', flexDirection:'column', flex:1, minHeight:0, overflow:'hidden' }}>
       <div style={{ padding:'14px 16px 10px', borderBottom:`1px solid ${C.onyx100}`, flexShrink:0 }}>
         <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6 }}>
           <span style={{ fontSize:11, fontWeight:700, color:C.purple, textTransform:'uppercase', letterSpacing:'.06em' }}>
@@ -300,11 +329,39 @@ function GuidedPanel({ lesson, onUnlock, onNext, onStepCorrect, onAllStepsDone, 
 
         {!allDone && step && (
           <>
+            {stepBriefing && (
+              <div style={{
+                marginBottom:12,
+                background:'#F4F1FF',
+                border:`1px solid ${C.purpleLight}`,
+                borderRadius:12,
+                padding:'10px 12px'
+              }}>
+                <div style={{
+                  fontSize:10,
+                  color:C.purple,
+                  fontWeight:700,
+                  letterSpacing:'.06em',
+                  textTransform:'uppercase',
+                  marginBottom:6
+                }}>
+                  Level Briefing
+                </div>
+                <div style={{
+                  fontSize:12.5,
+                  color:C.onyx700,
+                  lineHeight:1.6,
+                  whiteSpace:'pre-wrap'
+                }}>
+                  {stepBriefing}
+                </div>
+              </div>
+            )}
             <div style={{
               fontSize:13, color:C.onyx700, fontWeight:600, lineHeight:1.6,
               marginBottom:12, background:C.purpleLight, borderRadius:10, padding:'10px 12px'
             }}>
-              <b>Step {stepIdx + 1} — </b>{step.prompt}
+              <b>Step {stepIdx + 1} — </b>{stepPrompt}
             </div>
             <div
               style={{ display:'flex', flexDirection:'column', gap:7 }}
@@ -352,7 +409,6 @@ function GuidedPanel({ lesson, onUnlock, onNext, onStepCorrect, onAllStepsDone, 
             {taskComplete && <CompletionReview lesson={lesson} code={completedCode || built.join('\n')} />}
           </>
         )}
-        {!taskComplete && <LessonBriefing lesson={lesson} />}
       </div>
 
       {!taskComplete && (
@@ -372,20 +428,21 @@ function GuidedPanel({ lesson, onUnlock, onNext, onStepCorrect, onAllStepsDone, 
         </div>
       )}
 
-      {(allDone || taskComplete || guidedSteps.length === 0) && (
-        <div style={{ display:'flex', gap:7, padding:'10px 12px', flexShrink:0, borderTop:`1px solid ${C.onyx100}` }}>
+      <div style={{ display:'flex', flexDirection:'column', gap:7, padding:'10px 12px', flexShrink:0, borderTop:`1px solid ${C.onyx100}` }}>
+        {(allDone || taskComplete || guidedSteps.length === 0) && (
           <button onClick={() => onUnlock(builtRef.current.join('\n'))} className="toast-pop"
             style={{
-              flex:1, background:C.purple, color:'#fff', border:'none',
+              width:'100%', background:C.purple, color:'#fff', border:'none',
               padding:'12px 10px', fontSize:13, fontWeight:700,
               display:'flex', alignItems:'center', justifyContent:'center', gap:8, cursor:'pointer',
               borderRadius:10
             }}>
             <Ico n="unlock" s={15} c="#fff"/> Continue to Free Code
           </button>
-          <NextLevelButton onNext={onNext} />
-        </div>
-      )}
+        )}
+        {!taskComplete && <div style={{ marginBottom:8, fontSize:11, color:C.onyx400, textAlign:'center' }}>Select the correct code step above to complete the level.</div>}
+        <NextLevelButton onNext={onNext} isFinalLevel={isFinalLevel} isCleared={taskComplete} completed={taskComplete} />
+      </div>
     </div>
   )
 }
@@ -393,7 +450,7 @@ function GuidedPanel({ lesson, onUnlock, onNext, onStepCorrect, onAllStepsDone, 
 /* ════════════════════════════════
    FREE CODE PANEL
    ════════════════════════════════ */
-function FreeCodePanel({ lesson, starterCode, check, onRun, hint, onHint, completed, completedCode, onNext, onResetReplay }) {
+function FreeCodePanel({ lesson, starterCode, check, onRun, hint, onHint, completed, completedCode, onNext, onResetReplay, onResetCanvas, isFinalLevel }) {
   const [code, setCode] = useState(starterCode)
 
   useEffect(() => setCode(starterCode), [starterCode, lesson.id])
@@ -404,7 +461,7 @@ function FreeCodePanel({ lesson, starterCode, check, onRun, hint, onHint, comple
   }, [check, lesson, code])
 
   return (
-    <div style={{ display:'flex', flexDirection:'column', height:'100%', overflow:'hidden' }}>
+    <div style={{ display:'flex', flexDirection:'column', flex:1, minHeight:0, overflow:'hidden' }}>
       <div style={{ flexShrink:0, padding:'11px 14px 9px', borderBottom:`1px solid ${C.onyx100}`, background:C.onyx50 }}>
         <div style={{ fontSize:10, fontWeight:800, color:C.purple, textTransform:'uppercase', letterSpacing:'.06em', marginBottom:4 }}>Lesson briefing</div>
         <div style={{ fontSize:12, color:C.onyx600, lineHeight:1.6 }}>{lessonSummary(lesson)}</div>
@@ -442,7 +499,7 @@ function FreeCodePanel({ lesson, starterCode, check, onRun, hint, onHint, comple
           }}>
           <Ico n="play" s={14} c="#fff"/> Run
         </button>
-        <button onClick={() => setCode(starterCode)}
+        <button onClick={() => { setCode(starterCode); onResetCanvas() }}
           style={{
             background:'#fff', color:C.onyx600, border:`1px solid ${C.onyx100}`,
             borderRadius:9, padding:'10px 12px', cursor:'pointer',
@@ -502,12 +559,11 @@ function FreeCodePanel({ lesson, starterCode, check, onRun, hint, onHint, comple
                {completed && <CompletionReview lesson={lesson} code={completedCode} />}
             </>
           )}
-          {completed && (
-            <div style={{ marginTop:9, display:'flex' }}>
-              <NextLevelButton onNext={onNext} />
-            </div>
-          )}
         </div>
+      </div>
+      <div style={{ flexShrink:0, padding:'12px 14px', borderTop:`1px solid ${C.onyx100}` }}>
+        {!completed && <div style={{ marginBottom:8, fontSize:11, color:C.onyx400, textAlign:'center' }}>Complete the level to continue.</div>}
+        <NextLevelButton onNext={onNext} isFinalLevel={isFinalLevel} isCleared={completed} completed={completed} />
       </div>
     </div>
   )
@@ -519,6 +575,10 @@ function FreeCodePanel({ lesson, starterCode, check, onRun, hint, onHint, comple
 export default function LessonPage() {
   const { id }       = useParams()
   const navigate     = useNavigate()
+  const location     = useLocation()
+  const searchParams = new URLSearchParams(location.search)
+  const activeIslandId = Number(location.state?.islandId || searchParams.get('island') || window.localStorage.getItem('activeIslandId') || 1)
+  const relativeLevel = Number(location.state?.relativeLevel || id)
   const { updateXp } = useAuth()
 
   const [lesson,      setLesson]      = useState(null)
@@ -533,9 +593,12 @@ export default function LessonPage() {
   const [panelOpen,   setPanelOpen]   = useState(true)
   const [completed,   setCompleted]   = useState(false)
   const [completedCode, setCompletedCode] = useState('')
+  const [islandCleared, setIslandCleared] = useState(false)
+  const [xpGained, setXpGained] = useState(0)
   const [nextLesson, setNextLesson] = useState(null)
   const [pipStartPosition, setPipStartPosition] = useState(0)
   const [eventOffset, setEventOffset] = useState(0)
+  const [canvasResetToken, setCanvasResetToken] = useState(0)
   const completionPromiseRef = useRef(null)
   const guidedCodeRef = useRef('')
   const guidedEventsRef = useRef([])
@@ -547,18 +610,16 @@ export default function LessonPage() {
     if (!lesson) return Promise.resolve()
     if (completionPromiseRef.current) return completionPromiseRef.current
 
-    // Save a local completion first so the next level unlocks immediately if
-    // the student leaves before the server response returns.
-    setCompleted(true)
-    markLessonCompleted(lesson.id)
-
     const request = axios.post('/api/progress/complete', { lesson_id: Number(lesson.id) })
       .then(res => {
+        setCompleted(true)
+        markLessonCompleted(lesson.id)
         if (!res.data.alreadyDone) {
+          setXpGained(res.data.xpAwarded || lesson.xp_reward || 0)
           updateXp(res.data.newXp, res.data.newLevel, res.data.unlocked_module)
           setToast({ msg:`+${res.data.xpAwarded || lesson.xp_reward} XP — quest cleared!`, tone:'emerald', k:Date.now() })
           setTimeout(() => setToast(null), 3000)
-        }
+        } else setXpGained(0)
       })
       .catch(err => {
         console.error(err)
@@ -575,11 +636,13 @@ export default function LessonPage() {
 
   useEffect(() => {
     completionPromiseRef.current = null
-    const alreadyCompleted = isLessonCompleted(id)
-    setCompleted(alreadyCompleted)
+    setCompleted(false)
     setCompletedCode('')
+    setIslandCleared(false)
+    setXpGained(0)
+    setToast(null)
     setNextLesson(null)
-    setPhase(alreadyCompleted ? 'free' : 'guided')
+    setPhase('guided')
     setStarterCode('')
     setLiveCode('')
     setEventOffset(0)
@@ -590,44 +653,95 @@ export default function LessonPage() {
     const spawn = getLevelStartSpawn(id)
     setPipStartPosition(spawn.tileX)
 
-    Promise.all([axios.get(`/api/lessons/${id}`), axios.get('/api/progress'), axios.get(`/api/lessons/${id}/next`)])
-      .then(([lessonResponse, progressResponse, nextLessonResponse]) => {
-        const fetchedLesson = lessonResponse.data
-        const completedIds = (progressResponse.data || [])
-          .filter(item => item.phase === 'completed')
-          .map(item => Number(item.lesson_id ?? item.activity_id))
-        completedIds.forEach(markLessonCompleted)
-        const serverCompleted = completedIds.includes(Number(fetchedLesson.id))
+    const applyLessonData = (sourceLesson, nextLessonData = null) => {
+      if (!sourceLesson) return
+
+      let guidedData = sourceLesson.guided ?? sourceLesson.guidedSteps ?? sourceLesson.steps
+      if (typeof guidedData === 'string') {
+        try { guidedData = JSON.parse(guidedData) } catch (_) { guidedData = [] }
+      }
+
+      let conceptsData = sourceLesson.concepts
+      if (typeof conceptsData === 'string') {
+        try { conceptsData = JSON.parse(conceptsData) } catch (_) { conceptsData = [] }
+      }
+
+      setLesson({
+        ...sourceLesson,
+        moduleId: sourceLesson.moduleId ?? sourceLesson.module_id ?? sourceLesson.islandId ?? activeIslandId,
+        guided: Array.isArray(guidedData) ? guidedData : [],
+        concepts: Array.isArray(conceptsData) ? conceptsData : [],
+        initialCode: sourceLesson.initialCode ?? sourceLesson.starter_code ?? '',
+        checklist: Array.isArray(sourceLesson.checklist) ? sourceLesson.checklist : []
+      })
+
+      setPipStartPosition(Number.isFinite(Number(sourceLesson.initial_tile))
+        ? Number(sourceLesson.initial_tile)
+        : spawn.tileX)
+
+      setStarterCode(sourceLesson.starter_code || sourceLesson.initialCode || '')
+      if (Number(sourceLesson.module_id) === 1 && Number(sourceLesson.order_index) === 2 && !sourceLesson.starter_code && !sourceLesson.initialCode) {
+        setStarterCode('jump(4);')
+      }
+      setNextLesson(nextLessonData || null)
+    }
+
+    const fallbackLesson = getLessonByIslandAndLevel(activeIslandId, relativeLevel)
+
+    const loadLesson = async () => {
+      try {
+        const [lessonResponse, progressResponse] = await Promise.all([
+          axios.get('/api/lessons', { params: { island: activeIslandId, level: relativeLevel } }),
+          axios.get('/api/progress')
+        ])
+
+        const fetchedLesson = lessonResponse.data?.[0]
+        if (!fetchedLesson) throw new Error('Lesson not found for the selected island and level.')
+        const serverCompleted = (progressResponse.data || []).some(item => {
+          const progressLessonId = Number(item.lesson_id ?? item.activity_id)
+          return progressLessonId === Number(fetchedLesson.id) && (
+            item.phase === 'completed' || item.completed === true || item.is_completed === true
+          )
+        })
         if (serverCompleted) {
           setCompleted(true)
           setPhase('free')
         }
 
-        let guidedData = fetchedLesson.guided
-        if (typeof guidedData === 'string') {
-          try { guidedData = JSON.parse(guidedData) } catch (_) { guidedData = [] }
-        }
-
-        let conceptsData = fetchedLesson.concepts
-        if (typeof conceptsData === 'string') {
-          try { conceptsData = JSON.parse(conceptsData) } catch (_) { conceptsData = [] }
-        }
-
-        setLesson({
+        const localLesson = getLessonByIslandAndLevel(activeIslandId, relativeLevel)
+        applyLessonData({
           ...fetchedLesson,
-          guided: Array.isArray(guidedData) ? guidedData : [],
-          concepts: Array.isArray(conceptsData) ? conceptsData : []
-        })
+          guided: Array.isArray(fetchedLesson.guided) && fetchedLesson.guided.length > 0
+            ? fetchedLesson.guided
+            : localLesson?.guided || localLesson?.steps || [],
+          briefing: fetchedLesson.briefing || localLesson?.briefing,
+          starter_code: fetchedLesson.starter_code || localLesson?.starter_code || localLesson?.initialCode || ''
+        }, null)
+      } catch (error) {
+        console.error('Lesson fetch failed. Falling back to local lesson data.', error)
 
-        setStarterCode(fetchedLesson.starter_code || '')
-        setNextLesson(nextLessonResponse.data?.nextLesson || null)
-      })
-      .catch(console.error)
+        if (fallbackLesson) {
+          applyLessonData({
+            ...fallbackLesson,
+            guided: Array.isArray(fallbackLesson.guided) ? fallbackLesson.guided : [],
+            concepts: Array.isArray(fallbackLesson.concepts) ? fallbackLesson.concepts : []
+          })
+          setCompleted(false)
+          setPhase('guided')
+          setNextLesson(null)
+          return
+        }
+
+        setLesson(null)
+      }
+    }
+
+    loadLesson()
 
     startBgMusic()
     setMusicOn(true)
     return () => stopBgMusic()
-  }, [id])
+  }, [id, activeIslandId, relativeLevel])
 
   const handleStepCorrect = useCallback((snippet, currentFullCode, isFinalStep) => {
     if (lintJava(currentFullCode).length > 0) return
@@ -639,11 +753,16 @@ export default function LessonPage() {
   }, [])
 
   const handleUnlock = useCallback((builtCode) => {
+    if (!completed) {
+      setToast({ msg:'Complete Guided Mode first to unlock Free Code.', tone:'amber', k:Date.now() })
+      setTimeout(() => setToast(null), 3000)
+      return
+    }
     setStarterCode(builtCode)
     setLiveCode(builtCode)
     setCheck(null)
-    setPhase('free')
-  }, [])
+    handlePhaseChange('free')
+  }, [completed])
 
   const handleFreeRun = useCallback((code) => {
     const diagnostics = lintJava(code)
@@ -660,6 +779,16 @@ export default function LessonPage() {
     setLiveCode(code)
     setPlayToken(t => t + 1)
   }, [])
+
+  const resetCanvasForReplay = useCallback(() => {
+    setCheck(null)
+    setLiveCode(starterCode)
+    setEventOffset(0)
+    guidedCodeRef.current = ''
+    guidedEventsRef.current = []
+    guidedFinalStepRef.current = false
+    setCanvasResetToken(token => token + 1)
+  }, [starterCode])
 
   const handleResult = useCallback((res) => {
     if (res?.error || !lesson) return
@@ -688,22 +817,16 @@ export default function LessonPage() {
   const goToNext = async () => {
     if (!lesson) return
     await saveProgress()
-    const fallbackLessonId = Number(lesson.id || id) + 1
-    try {
-      const response = await axios.get(`/api/lessons/${lesson.id}/next`)
-      const next = response.data?.nextLesson
-      if (next?.id) {
-        navigate(`/lesson/${next.id}`)
-        return
-      }
-    } catch (err) {
-      console.error(err)
-      if (nextLesson?.id) {
-        navigate(`/lesson/${nextLesson.id}`)
-        return
-      }
+    const currentLevel = Number(lesson.order_index || lesson.level_label?.match(/\d+/)?.[0] || relativeLevel)
+    const currentIslandId = getActiveIslandId(lesson, location) || activeIslandId
+    if (currentLevel === 10) {
+      setIslandCleared(true)
+      return
     }
-    navigate(`/lesson/${fallbackLessonId}`)
+    const nextLevel = currentLevel + 1
+    if (nextLevel <= 10) {
+      navigate(`/lesson/${nextLevel}?island=${currentIslandId}`, { state: { islandId: currentIslandId, relativeLevel: nextLevel } })
+    }
   }
 
   const toggleMusic = () => {
@@ -711,6 +834,15 @@ export default function LessonPage() {
       window._cqAudio.paused ? window._cqAudio.play() : window._cqAudio.pause()
     }
     setMusicOn(m => !m)
+  }
+
+  const handlePhaseChange = phaseName => {
+    if (phaseName === 'free' && !completed) {
+      setToast({ msg:'Complete Guided Mode first to unlock Free Code.', tone:'amber', k:Date.now() })
+      setTimeout(() => setToast(null), 3000)
+      return
+    }
+    setPhase(phaseName)
   }
 
   if (!lesson) return (
@@ -736,7 +868,7 @@ export default function LessonPage() {
         padding:'0 14px', gap:10, zIndex:20
       }}>
         <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-          <button onClick={() => navigate(lesson.module_id ? `/island/${lesson.module_id}` : '/')}
+          <button onClick={() => navigate(getIslandRoute(lesson, location))}
             style={{
               background:'rgba(255,255,255,0.08)', border:'1px solid rgba(255,255,255,0.1)',
               borderRadius:7, padding:'5px 11px', color:'rgba(255,255,255,0.65)',
@@ -748,7 +880,7 @@ export default function LessonPage() {
           <div style={{ width:1, height:18, background:'rgba(255,255,255,0.1)' }}/>
           <div>
             <div style={{ fontSize:10, color:C.purple, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em' }}>
-              {lesson.level_label} · {javaLabel(lesson.track)}
+              {`ISLAND ${activeIslandId} - ${javaLabel(lesson.module_title || lesson.track || `Module ${activeIslandId}`)}`}
             </div>
             <div style={{ fontSize:13, color:'rgba(255,255,255,0.9)', fontWeight:600 }}>
               {lesson.title}
@@ -759,12 +891,12 @@ export default function LessonPage() {
         <div style={{ display:'flex', alignItems:'center', gap:8 }}>
           <div style={{ display:'flex', background:'rgba(255,255,255,0.07)', borderRadius:999, padding:3, gap:2 }}>
             {['guided', 'free'].map(p => (
-              <button key={p} type="button" onClick={() => setPhase(p)} style={{
+              <button key={p} type="button" onClick={() => handlePhaseChange(p)} disabled={p === 'free' && !completed} style={{
                 padding:'4px 13px', borderRadius:999, fontSize:11, fontWeight:600,
                 background: phase === p ? C.purple : 'transparent',
                 color: phase === p ? '#fff' : 'rgba(255,255,255,0.4)',
                 transition:'all .2s', display:'flex', alignItems:'center', gap:4,
-                userSelect:'none', border:'none', cursor:'pointer'
+                userSelect:'none', border:'none', cursor:p === 'free' && !completed ? 'not-allowed' : 'pointer', opacity:p === 'free' && !completed ? .45 : 1
               }}>
                 {p === 'guided' ? 'Guided' : 'Free Code'}
               </button>
@@ -801,7 +933,8 @@ export default function LessonPage() {
             code={liveCode}
             onResult={handleResult}
             target={lesson.target_tiles}
-            backgroundImage={getBackgroundForLesson(lesson)}
+            lessonData={lesson}
+            resetToken={canvasResetToken}
             levelLabel={lesson.level_label}
             levelTitle={lesson.title}
             initialPipPosition={pipStartPosition}
@@ -830,6 +963,7 @@ export default function LessonPage() {
               onAllStepsDone={handleAllStepsDone}
               taskComplete={completed}
               completedCode={completedCode}
+              isFinalLevel={Number(lesson.order_index || lesson.level_label?.match(/\d+/)?.[0] || lesson.id) === 10}
             />
           )}
           {panelOpen && phase === 'free' && (
@@ -844,15 +978,24 @@ export default function LessonPage() {
               completedCode={completedCode}
               onNext={goToNext}
               onResetReplay={() => {
-                setCheck(null)
+                resetCanvasForReplay()
                 setPhase('guided')
               }}
+              onResetCanvas={resetCanvasForReplay}
+              isFinalLevel={Number(lesson.order_index || lesson.level_label?.match(/\d+/)?.[0] || lesson.id) === 10}
             />
           )}
         </div>
       </div>
 
       {toast && <Toast msg={toast.msg} tone={toast.tone} key={toast.k}/>}
+      {islandCleared && (
+        <IslandClearedModal
+          islandName={`Island ${lesson.module_id}`}
+          xpGained={xpGained}
+          onReturn={() => navigate('/quest', { state: { islandId: getActiveIslandId(lesson, location) } })}
+        />
+      )}
     </div>
   )
 }

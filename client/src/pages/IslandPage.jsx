@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import axios from 'axios'
 import { Ico, Pill } from '../components/UI'
-import { completedLessonIdsWithLocalFallback, isActivityUnlocked } from '../utils/questProgress'
+import { completedLessonIdsWithLocalFallback, getIslandStatuses, isActivityUnlocked } from '../utils/questProgress'
 
 export default function IslandPage() {
   const { id } = useParams()
@@ -13,6 +13,7 @@ export default function IslandPage() {
   const [error, setError] = useState('')
 
   useEffect(() => {
+    localStorage.setItem('activeIslandId', String(Number(id) || 1))
     Promise.all([axios.get('/api/lessons/modules'), axios.get('/api/progress')])
       .then(([moduleResponse, progressResponse]) => {
         setModules(moduleResponse.data)
@@ -30,10 +31,11 @@ export default function IslandPage() {
     () => completedLessonIdsWithLocalFallback(progress),
     [progress]
   )
-  const moduleIndex = modules.findIndex(module => String(module.id) === String(id))
-  const previousModulesComplete = moduleIndex <= 0 || modules
-    .slice(0, moduleIndex)
-    .every(module => module.activities.length > 0 && module.activities.every(activity => completedIds.has(Number(activity.id))))
+  const islandStatuses = useMemo(
+    () => getIslandStatuses(modules, completedIds, 1, progress),
+    [modules, completedIds, progress]
+  )
+  const previousModulesComplete = islandStatuses.get(Number(id))?.unlocked ?? false
 
   if (loading) return <div style={pageMessage}>Preparing the island map…</div>
   if (error || !selectedModule) return <div style={pageMessage}>{error || 'Island not found.'}</div>
@@ -44,7 +46,7 @@ export default function IslandPage() {
       <div style={{ position:'fixed', inset:0, background:'linear-gradient(180deg,rgba(15,23,42,.44),rgba(15,23,42,.9))', pointerEvents:'none' }} />
 
       <header style={{ position:'relative', zIndex:1, display:'flex', justifyContent:'space-between', alignItems:'center', gap:14, padding:'17px clamp(18px,4vw,54px)', borderBottom:'1px solid rgba(255,255,255,.13)', background:'rgba(15,23,42,.74)' }}>
-        <button type="button" onClick={() => navigate('/quest')} style={backButton}>
+        <button type="button" onClick={() => navigate('/quest', { state: { islandId: Number(id) } })} style={backButton}>
           ← All islands
         </button>
         <span style={{ fontSize:12, color:'#CBD5E1' }}>Island {selectedModule.order_index} of {modules.length} · {selectedModule.activities.length} levels</span>
@@ -74,16 +76,18 @@ export default function IslandPage() {
             </div>
 
             <div style={{ ...panel, padding:'22px', background:'rgba(15,23,42,.9)' }}>
-              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(185px, 1fr))', gap:14 }}>
+              <div className="island-level-grid" style={{ display:'grid', gridTemplateColumns:'repeat(5, minmax(0, 1fr))', gap:14 }}>
                 {selectedModule.activities.map((activity, index) => {
                   const completed = completedIds.has(Number(activity.id))
                   const unlocked = isActivityUnlocked(index, selectedModule.activities, completedIds)
+                  const lessonRouteId = Number(id) === 3 ? index + 1 : activity.id
                   return (
                     <button
                       key={activity.id}
                       type="button"
                       disabled={!unlocked}
-                      onClick={() => navigate(`/lesson/${activity.id}`)}
+                      onClick={() => navigate(`/lesson/${index + 1}?island=${Number(id)}`, { state: { islandId: Number(id), relativeLevel: index + 1 } })}
+                      className="island-level-card"
                       style={{
                         minHeight:164, borderRadius:15, padding:'16px', textAlign:'left', color:'#F8FAFC',
                         border: completed ? '1px solid #4ADE80' : unlocked ? `1px solid ${selectedModule.color}` : '1px solid rgba(148,163,184,.24)',
@@ -93,7 +97,7 @@ export default function IslandPage() {
                       }}
                     >
                       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
-                        <span style={{ width:32, height:32, display:'grid', placeItems:'center', borderRadius:9, background: completed ? '#16A34A' : unlocked ? selectedModule.color : '#475569', fontWeight:800 }}>
+                        <span className="island-level-card__number" style={{ width:32, height:32, display:'grid', placeItems:'center', borderRadius:9, background: completed ? '#16A34A' : unlocked ? selectedModule.color : '#475569', fontWeight:800 }}>
                           {completed ? <Ico n="check" s={16} c="#fff" /> : unlocked ? index + 1 : <Ico n="lock" s={15} c="#CBD5E1" />}
                         </span>
                         <span style={{ fontSize:11, color:'#FDE68A', fontWeight:700 }}>+{activity.xp_reward} XP</span>

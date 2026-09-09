@@ -45,9 +45,12 @@ async function getModules(req, res) {
        FROM lesson_modules WHERE is_active = TRUE ORDER BY order_index`
     )
     const [lessons] = await db.query(
-      `SELECT lessons.id, lessons.module_id, lessons.level_label, lessons.track,
-              lessons.title, lessons.briefing, lessons.hint, lessons.goal,
-              lessons.xp_reward, lessons.target_tiles, lessons.order_index
+            `SELECT lessons.id, lessons.module_id, lessons.level_label, lessons.track,
+              lessons.title, lessons.subtitle, lessons.description, lessons.briefing,
+              lessons.hint, lessons.goal, lessons.xp_reward, lessons.target_tiles,
+              lessons.background_image, lessons.grid_cols, lessons.grid_rows,
+              lessons.total_tiles, lessons.ground_fraction, lessons.mechanics_config,
+              lessons.order_index
       FROM lessons
        JOIN lesson_modules ON lesson_modules.id = lessons.module_id
        WHERE lessons.is_active = TRUE AND lesson_modules.is_active = TRUE

@@ -32,7 +32,7 @@ export default function DashboardPage() {
 
         // Land on the furthest island the player has actually unlocked,
         // walked in syllabus order across every island in the chain.
-        const statuses = getIslandStatuses(fetchedModules, completedIds, userUnlocked)
+        const statuses = getIslandStatuses(fetchedModules, completedIds, userUnlocked, progressResponse.data || [])
         let activeModuleId = fetchedModules[0]?.id ?? null
         for (const mod of fetchedModules) {
           if (!statuses.get(mod.id)?.unlocked) break
@@ -54,8 +54,8 @@ export default function DashboardPage() {
   )
   const clearedCount = completedIds.size
   const islandStatuses = useMemo(
-    () => getIslandStatuses(modules, completedIds, userUnlocked),
-    [modules, completedIds, userUnlocked]
+    () => getIslandStatuses(modules, completedIds, userUnlocked, progress),
+    [modules, completedIds, progress, userUnlocked]
   )
 
   const selectModule = module => {

@@ -13,6 +13,7 @@ function Island({ module, status, selected, onSelect }) {
       className={`island-card ${isLocked ? 'island-card--locked' : ''} ${status === 'current' ? 'island-card--current' : ''} ${selected ? 'island-card--selected' : ''}`}
       disabled={isLocked}
       onClick={() => onSelect(module)}
+      style={selected ? { borderColor: module.color || '#3B82F6', color: module.color || '#3B82F6' } : undefined}
       aria-label={`${module.title}: ${isLocked ? 'locked' : 'open'}`}
     >
       <svg className="island-card__art" viewBox="0 0 160 112" role="img" aria-hidden="true">
@@ -26,7 +27,7 @@ function Island({ module, status, selected, onSelect }) {
           <path d="M56 22l8-12 8 12M82 14l12-13 12 13" fill="#F8FAFC" opacity=".88" />
         </>}
       </svg>
-      <span className="island-card__badge" style={{ background: isLocked ? '#334155' : isComplete ? '#16A34A' : '#4F46E5' }}>
+      <span className="island-card__badge" style={{ background: isLocked ? '#334155' : isComplete ? '#16A34A' : module.color || '#4F46E5' }}>
         <Ico n={isLocked ? 'lock' : isComplete ? 'check' : 'play'} s={16} c="#fff" />
       </span>
       <strong>{module.title}</strong>
@@ -37,7 +38,7 @@ function Island({ module, status, selected, onSelect }) {
 
 export default function IslandMap({ modules, progress, selectedId, onSelect, unlockedOverride }) {
   const completedIds = completedLessonIdsWithLocalFallback(progress)
-  const statuses = getIslandStatuses(modules, completedIds, unlockedOverride)
+  const statuses = getIslandStatuses(modules, completedIds, unlockedOverride, progress)
 
   return (
     <div className="quest-map">
