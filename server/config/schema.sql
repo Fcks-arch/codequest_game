@@ -54,6 +54,7 @@ CREATE TABLE lessons (
   min_jumps INT DEFAULT 0,
   required_code_label VARCHAR(150),
   required_code_pattern VARCHAR(500),
+  solution_code VARCHAR(500),
   order_index INT DEFAULT 0,
   background_image VARCHAR(255),
   subtitle VARCHAR(255),

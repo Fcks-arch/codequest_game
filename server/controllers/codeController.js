@@ -5,124 +5,42 @@ const path = require('path')
 const { promisify } = require('util')
 
 const execFileAsync = promisify(execFile)
-const EXECUTION_TIMEOUT_MS = 3000
+const EXECUTION_TIMEOUT_MS = 2000
+const FREE_CODE_SAFETY_MESSAGE = "Safety Shield: That syntax isn't unlocked for this level yet! Stick to statements taught in this lesson."
+const FORBIDDEN_PATTERNS = [
+  /\b(?:while|for|do|class|interface|enum|package|import|extends|implements|synchronized|native|reflect|reflection|Runtime|ProcessBuilder)\b/i,
+  /\bThread\s*\.\s*sleep\b/i,
+  /\bSystem\s*\.\s*exit\b/i,
+  /\b(?:Class\s*\.\s*forName|getDeclared|setAccessible|exec\s*\()\b/i,
+]
+
+function withoutLiteralsAndComments(source) {
+  return source
+    .replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g, '""')
+}
+
+function validateFreeCode(code) {
+  if (typeof code !== 'string' || !code.trim() || code.length > 4000) return false
+  const sanitized = withoutLiteralsAndComments(code)
+  return !FORBIDDEN_PATTERNS.some(pattern => pattern.test(sanitized))
+}
 
 const JAVA_WRAPPER = studentCode => `
 public class Main {
-    private static void emit(String type, String value) {
-        System.out.println("CODEQUEST:" + type + ":" + value);
-    }
-
-    public static void moveRight(int amount) {
-        emit("moveRight", Integer.toString(amount));
-    }
-
-    public static void moveLeft(int amount) {
-      emit("moveLeft", Integer.toString(amount));
-    }
-
-    public static void moveUp(int amount) {
-      emit("moveUp", Integer.toString(amount));
-    }
-
-    public static void moveDown(int amount) {
-      emit("moveDown", Integer.toString(amount));
-    }
-
-    public static void jump(int amount) {
-        emit("jump", Integer.toString(amount));
-    }
-
-    public static void jump() {
-      jump(1);
-    }
-
-    public static void attack() {
-        emit("attack", "");
-    }
-
-    public static void pullLever() {
-        emit("pullLever", "");
-    }
-
-    public static void collectKey() {
-        emit("collectKey", "");
-    }
-
-    public static void useItem(String itemName) {
-        emit("useItem", itemName == null ? "" : itemName);
-    }
-
-    public static void defend() {
-        emit("defend", "");
-    }
-
-    public static void say(String message) {
-        emit("say", message.replace("\\n", " "));
-    }
-
-    public static void say(int message) {
-      say(Integer.toString(message));
-    }
-
-    public static void say(boolean message) {
-      say(Boolean.toString(message));
-    }
-
-    public static void say(double message) {
-      say(Double.toString(message));
-    }
-
-    public static void speak(String message) {
-      say(message);
-    }
-
-    public static class Pip {
-        public void moveRight(int amount) { Main.moveRight(amount); }
-        public void moveLeft(int amount) { Main.moveLeft(amount); }
-        public void moveUp(int amount) { Main.moveUp(amount); }
-        public void moveDown(int amount) { Main.moveDown(amount); }
-        public void jump(int amount) { Main.jump(amount); }
-        public void jump() { Main.jump(); }
-        public void attack() { Main.attack(); }
-        public void pullLever() { Main.pullLever(); }
-        public void collectKey() { Main.collectKey(); }
-        public void useItem(String itemName) { Main.useItem(itemName); }
-        public void defend() { Main.defend(); }
-        public void say(String message) { Main.say(message); }
-        public void say(int message) { Main.say(message); }
-        public void say(boolean message) { Main.say(message); }
-        public void say(double message) { Main.say(message); }
-        public void speak(String message) { Main.speak(message); }
-    }
-
     public static void main(String[] args) {
-        Pip pip = new Pip();
 ${studentCode}
     }
 }
 `
 
-function parseCommands(stdout) {
-  return stdout.split(/\r?\n/).flatMap(line => {
-    if (!line.startsWith('CODEQUEST:')) return []
-    const [, type, ...parts] = line.split(':')
-    const value = parts.join(':')
-    if (type === 'say') return [{ type, text: value }]
-    if (['moveRight', 'moveLeft', 'moveUp', 'moveDown', 'jump'].includes(type)) {
-      const amount = Number(value)
-      if (Number.isFinite(amount)) return [{ type, amount }]
-    }
-    if (['attack', 'pullLever', 'collectKey', 'defend'].includes(type)) return [{ type }]
-    if (type === 'useItem') return [{ type, item: value }]
-    return []
-  })
-}
-
 async function executeJava(req, res) {
   const { code, lessonId } = req.body || {}
   if (typeof code !== 'string' || !code.trim()) {
     return res.status(400).json({ error: 'Java code is required.', commands: [], events: [] })
+  }
+  if (!validateFreeCode(code)) {
+    return res.status(422).json({ error: FREE_CODE_SAFETY_MESSAGE, commands: [], events: [], code })
   }
 
   let tempDir
@@ -143,8 +61,7 @@ async function executeJava(req, res) {
       windowsHide: true,
       maxBuffer: 1024 * 1024
     })
-    const commands = parseCommands(stdout)
-    return res.json({ lessonId, commands, events: commands, stdout, stderr: stderr || '', error: null })
+    return res.json({ lessonId, commands: [], events: [], stdout, stderr: stderr || '', error: null })
   } catch (error) {
     const stderr = error.stderr || error.stdout || error.message || 'Java execution failed.'
     const timedOut = error.killed || error.code === 'ETIMEDOUT'
@@ -161,4 +78,4 @@ async function executeJava(req, res) {
   }
 }
 
-module.exports = { executeJava }
+module.exports = { executeJava, validateFreeCode }

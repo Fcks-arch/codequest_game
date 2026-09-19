@@ -195,6 +195,7 @@ export default function GameCanvas({ playToken, code, onResult, target, lessonDa
   const [bubble,   setBubble]   = useState(null)
   const [bubbleX,  setBubbleX]  = useState(50) 
   const [bubbleY,  setBubbleY]  = useState(30) 
+  const [bubbleOpacity, setBubbleOpacity] = useState(1)
   const [runState, setRunState] = useState('idle')
   const [errMsg,   setErrMsg]   = useState('')
   const [canvasH,  setCanvasH]  = useState(300)
@@ -630,7 +631,7 @@ export default function GameCanvas({ playToken, code, onResult, target, lessonDa
     movementRunning.current = true
     stopIdleLoop()
     pipAlphaRef.current = 1
-    setRunState('running'); setErrMsg(''); setBubble(null); setRunMovedTiles(0)
+    setRunState('running'); setErrMsg(''); setBubble(null); setBubbleOpacity(1); setRunMovedTiles(0)
     // Guards every rAF/setTimeout callback below. Without this, clicking
     // Run again while a previous run's say() bubble timeout (or jump/land
     // rAF chain) was still pending let that stale callback keep firing
@@ -685,7 +686,13 @@ export default function GameCanvas({ playToken, code, onResult, target, lessonDa
         return
       }
       const ev = events[i]
-      if (ev.type === 'moveRight') {
+      // Directional tile movement is intentionally disabled for the restored
+      // static-platform canvas. Consume legacy movement events so Pip stays
+      // grounded at the level start while idle animation continues.
+      if (ev.type === 'moveRight' || ev.type === 'jump') {
+        i++
+        step()
+      } else if (ev.type === 'moveRight') {
         const from = pipX, to = pipX + ev.amount
         const pose = Math.abs(ev.amount) >= RUN_THRESHOLD ? 'run' : 'walk'
         // Short clips used to finish in only three or four rAF callbacks,
@@ -772,8 +779,9 @@ export default function GameCanvas({ playToken, code, onResult, target, lessonDa
           }
           raf.current = requestAnimationFrame(lfr)
         }
-      } else if (ev.type === 'say' || ev.type === 'speak') {
+      } else if (ev.type === 'say' || ev.type === 'speak' || ev.type === 'levelOutput') {
         setBubble(ev.text)
+        setBubbleOpacity(1)
         // Same horizontal placement as the character (see CX in drawScene):
         // centered over Pip's current tile, clamped so the bubble can't
         // overflow past the edge of the game area when he's near either side.
@@ -788,10 +796,11 @@ export default function GameCanvas({ playToken, code, onResult, target, lessonDa
         setBubbleX(Math.min(94, Math.max(6, bubbleLeft)))
         setBubbleY(Math.min(82, Math.max(8, ((mapFeet - characterHeight - 16) / canvasH) * 100)))
         drawScene(ctx, pipX, 0, false, 'idle', 0)
+        setTimeout(() => setBubbleOpacity(0), 2400)
         setTimeout(() => {
           if (cancelled || executionVersion !== executionVersionRef.current) return
           setBubble(null); i++; step()
-        }, 1100)
+        }, 3000)
       } else { i++; step() }
     }
     // The worker performs parsing and execution off the UI thread. Animation
@@ -811,7 +820,7 @@ export default function GameCanvas({ playToken, code, onResult, target, lessonDa
   const canvasHeight = fullHeight ? canvasH : 320
 
   return (
-    <div ref={wrap} style={{ position:'relative', width:'100%', height:'100%', minHeight: fullHeight ? '100%' : 320, background:'#C7D2F8' }}>
+    <div ref={wrap} style={{ position:'relative', width:'100%', height:'100%', minHeight: fullHeight ? '100%' : 320, background:'#C7D2F8', pointerEvents:'none' }}>
       <div style={{
         position:'absolute', top:14, left:14,
         display:'flex', alignItems:'center', gap:8,
@@ -819,7 +828,7 @@ export default function GameCanvas({ playToken, code, onResult, target, lessonDa
         border:'1px solid rgba(255,255,255,0.2)', borderRadius:12,
         padding:'7px 10px', fontSize:12, fontWeight:700,
         letterSpacing:'0.04em', textTransform:'uppercase',
-        boxShadow:'0 10px 24px rgba(15,23,42,0.22)', zIndex:2
+        boxShadow:'0 10px 24px rgba(15,23,42,0.22)', zIndex:2, pointerEvents:'none'
       }}>
         <span style={{ opacity: 0.8 }}>Tiles</span>
         <span style={{ fontFamily:"'JetBrains Mono', monospace", fontSize:14 }}>{Math.max(0, runMovedTiles)} / {target || 3}</span>
@@ -834,7 +843,7 @@ export default function GameCanvas({ playToken, code, onResult, target, lessonDa
         padding:'7px 10px', fontSize:11, fontWeight:700,
         letterSpacing:'0.04em', textTransform:'uppercase',
         boxShadow:'0 10px 24px rgba(15,23,42,0.22)', zIndex:2,
-        maxWidth:200
+        maxWidth:200, pointerEvents:'none'
       }}>
         {levelLabel && <span style={{ opacity: 0.9, fontSize:10 }}>{levelLabel}</span>}
         {levelTitle && <span style={{ fontSize:12, fontWeight:700, lineHeight:1.2 }}>{levelTitle}</span>}
@@ -848,7 +857,7 @@ export default function GameCanvas({ playToken, code, onResult, target, lessonDa
       />
       {bubble && (
         <div className="toast-pop" style={{
-          position:'absolute', top:`${bubbleY}%`, left:`${bubbleX}%`, transform:'translate(-50%, -100%)',
+          position:'absolute', top:`${bubbleY}%`, left:`${bubbleX}%`, transform:'translate(-50%, -100%)', opacity:bubbleOpacity, transition:'opacity 600ms ease', pointerEvents:'none',
           background:'#fff', color:C.onyx,
           padding:'10px 16px', borderRadius:12, fontSize:14, fontWeight:500,
           boxShadow:'0 4px 14px rgba(15,23,42,.18)', maxWidth:220, width:'max-content',
@@ -874,7 +883,7 @@ export default function GameCanvas({ playToken, code, onResult, target, lessonDa
           position:'absolute', bottom:0, left:0, right:0,
           background:'rgba(254,236,236,0.96)', borderTop:`1px solid #EF444455`,
           color:'#EF4444', fontSize:13, padding:'10px 16px',
-          fontFamily:"'JetBrains Mono',monospace"
+          fontFamily:"'JetBrains Mono',monospace", pointerEvents:'none'
         }}>⚠ {errMsg}</div>
       )}
       {runState === 'success' && (
@@ -882,7 +891,7 @@ export default function GameCanvas({ playToken, code, onResult, target, lessonDa
           position:'absolute', top:16, right:16,
           background:C.emerald, color:'#fff',
           padding:'11px 20px', borderRadius:20, fontSize:15, fontWeight:700,
-          boxShadow:'0 4px 20px rgba(34,197,94,.4)'
+          boxShadow:'0 4px 20px rgba(34,197,94,.4)', pointerEvents:'none'
         }}>🏁 Flag reached!</div>
       )}
     </div>

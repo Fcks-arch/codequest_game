@@ -4,10 +4,13 @@ import axios from 'axios'
 import { useAuth } from '../context/AuthContext'
 import GameCanvas, { startBgMusic, stopBgMusic } from '../components/GameCanvas'
 import CodeEditor, { lintJava } from '../components/CodeEditor'
-import { getLevelStartSpawn, markLessonCompleted } from '../utils/GameStateManager'
+import { markLessonCompleted } from '../utils/GameStateManager'
 import { getLessonByIslandAndLevel } from '../data/lessons'
 import IslandClearedModal from '../components/IslandClearedModal'
 import { C, Ico, Pill, Toast } from '../components/UI'
+import { FREE_CODE_SAFETY_MESSAGE, validateFreeCode } from '../utils/validateFreeCode'
+
+const FREE_CODE_PROMPT = '// Write your Java code here...'
 
 function javaLabel(value) {
   return String(value || '').replace(/JavaScript Foundations/g, 'JAVA FOUNDATIONS').replace(/JavaScript/g, 'Java')
@@ -51,13 +54,10 @@ function lessonSummary(lesson) {
 }
 
 function guidedJavaSummary(code) {
-  if (/\bint\s+\w+\s*=/.test(code) && /moveRight\s*\(\s*\w+\s*\)/.test(code)) {
-    return 'You declared an integer variable in Java and passed it as a parameter to move Pip.'
-  }
   if (/\b(?:int|double|float|long|short|byte|char|boolean|String)\s+\w+\s*=/.test(code)) {
     return 'You declared a typed variable in Java and used it in a method call.'
   }
-  return 'You built a Java sequence from method calls, using explicit parameters and semicolons.'
+  return 'You built a Java statement using explicit types, values, and semicolons.'
 }
 
 function briefingNotes(lesson) {
@@ -100,30 +100,10 @@ function NextLevelButton({ onNext, isFinalLevel = false, isCleared = false, comp
 function explainCodeLine(line, lesson) {
   const code = String(line || '').trim()
   if (!code) return null
-  const isIsland2 = lesson?.module_id === 2 || (Number(lesson?.id) >= 11 && Number(lesson?.id) <= 20)
-  if (/^say\s*\(/.test(code)) {
-    return isIsland2
-      ? `${code} — Pip calls out to announce his approach across the bridge and bypass the trap.`
-      : `${code} tells Pip to display this message before continuing.`
-  }
-  if (/^moveRight\s*\(/.test(code)) {
-    return isIsland2
-      ? `${code} — Pip strides across the bridge tiles toward the next checkpoint.`
-      : `${code} moves Pip right by the supplied number of tiles.`
-  }
-  if (/^jump\s*\(/.test(code)) {
-    return isIsland2
-      ? `${code} — Pip springs into the air to dodge the spike trap blocking the path.`
-      : `${code} makes Pip jump over the next obstacle or gap.`
-  }
   if (/^(?:int|let|const|String|double|float|long|boolean)\s+\w+\s*=/.test(code)) {
-    return isIsland2
-      ? `${code} — Pip calculates the precise bridge span distance and stores it in memory.`
-      : `${code} declares a typed variable value that can be reused later in the program.`
+    return `${code} declares a typed variable value that can be reused later in the program.`
   }
-  return isIsland2
-    ? `${code} — Pip executes this step of the algorithm along the bridge route.`
-    : `${code} runs as the next statement in the program's sequence.`
+  return `${code} runs as the next Java statement in the lesson.`
 }
 
 function CompletionReview({ lesson, code }) {
@@ -165,38 +145,7 @@ function CompletionReview({ lesson, code }) {
 function validateLesson(lesson, events = [], code = '') {
   if (!lesson) return { passed: false, items: [] }
 
-  const minMoves = Number(lesson.min_moves || 0)
-  const minSays = Number(lesson.min_says || 0)
-  const minJumps = Number(lesson.min_jumps || 0)
-
-  const moves = events
-    .filter(event => event.type === 'moveRight')
-    .reduce((total, event) => total + (event.amount || 1), 0)
-  const says = events.filter(event => event.type === 'say').length
-  const jumps = events.filter(event => event.type === 'jump').length
-
   const items = []
-
-  if (minMoves > 0) {
-    items.push({
-      label: `Move Pip at least ${minMoves} tile${minMoves === 1 ? '' : 's'}`,
-      ok: moves >= minMoves
-    })
-  }
-
-  if (minSays > 0) {
-    items.push({
-      label: `Use say() ${minSays} time${minSays === 1 ? '' : 's'}`,
-      ok: says >= minSays
-    })
-  }
-
-  if (minJumps > 0) {
-    items.push({
-      label: `Use jump() ${minJumps} time${minJumps === 1 ? '' : 's'}`,
-      ok: jumps >= minJumps
-    })
-  }
 
   if (lesson.required_code_pattern) {
     let patternMatches = false
@@ -209,14 +158,15 @@ function validateLesson(lesson, events = [], code = '') {
     })
   }
 
-  if (items.length === 0) {
-    const target = Number(lesson.target_tiles || 1)
-    if (target > 1) {
-      items.push({ label: `Reach tile ${target}`, ok: moves >= target })
-    } else {
-      items.push({ label: 'Complete the task', ok: code.trim().length > 0 })
-    }
+  if (lesson.solution_code) {
+    const normalize = value => String(value || '').replace(/\s+/g, ' ').trim()
+    items.push({
+      label: 'Match the lesson solution',
+      ok: normalize(code) === normalize(lesson.solution_code)
+    })
   }
+
+  if (items.length === 0) items.push({ label: 'Complete the Java solution', ok: code.trim().length > 0 })
 
   return {
     passed: items.length > 0 && items.every(item => item.ok),
@@ -470,21 +420,22 @@ function FreeCodePanel({ lesson, starterCode, check, onRun, hint, onHint, comple
             {concept.note || concept.code_snippet}
           </div>
         ))}
-        {completed && (
-          <button type="button" onClick={onResetReplay} style={{
-            marginTop:8, background:'transparent', color:C.purple, border:`1px solid ${C.purple}`,
-            borderRadius:7, padding:'6px 9px', fontSize:11, fontWeight:700, cursor:'pointer'
-          }}>
-            Reset &amp; Replay Guided Mode
-          </button>
-        )}
+        <button type="button" onClick={() => {
+          setCode(starterCode)
+          onResetReplay()
+        }} style={{
+          marginTop:8, background:'transparent', color:C.purple, border:`1px solid ${C.purple}`,
+          borderRadius:7, padding:'6px 9px', fontSize:11, fontWeight:700, cursor:'pointer'
+        }}>
+          Reset &amp; Replay Guided Mode
+        </button>
       </div>
 
-      <div style={{ flex:1, overflow:'hidden', display:'flex', flexDirection:'column', padding:'12px 12px 0' }}>
+      <div style={{ flex:'1 1 260px', minHeight:260, overflow:'visible', display:'flex', flexDirection:'column', padding:'12px 12px 0' }}>
         <div style={{ fontSize:11, fontWeight:700, color:C.onyx400, textTransform:'uppercase', letterSpacing:'.04em', marginBottom:6 }}>
           Your Code
         </div>
-        <div style={{ flex:1, minHeight:0, borderRadius:10, overflow:'hidden' }}>
+        <div data-testid="free-code-editor" style={{ flex:'1 1 auto', minHeight:220, height:260, borderRadius:10, overflow:'hidden', border:`1px solid ${C.onyx100}` }}>
           <CodeEditor value={code} onChange={setCode} fillHeight />
         </div>
       </div>
@@ -596,8 +547,6 @@ export default function LessonPage() {
   const [islandCleared, setIslandCleared] = useState(false)
   const [xpGained, setXpGained] = useState(0)
   const [nextLesson, setNextLesson] = useState(null)
-  const [pipStartPosition, setPipStartPosition] = useState(0)
-  const [eventOffset, setEventOffset] = useState(0)
   const [canvasResetToken, setCanvasResetToken] = useState(0)
   const completionPromiseRef = useRef(null)
   const guidedCodeRef = useRef('')
@@ -645,13 +594,10 @@ export default function LessonPage() {
     setPhase('guided')
     setStarterCode('')
     setLiveCode('')
-    setEventOffset(0)
     guidedCodeRef.current = ''
     guidedEventsRef.current = []
     guidedFinalStepRef.current = false
     setCheck(null)
-    const spawn = getLevelStartSpawn(id)
-    setPipStartPosition(spawn.tileX)
 
     const applyLessonData = (sourceLesson, nextLessonData = null) => {
       if (!sourceLesson) return
@@ -675,14 +621,7 @@ export default function LessonPage() {
         checklist: Array.isArray(sourceLesson.checklist) ? sourceLesson.checklist : []
       })
 
-      setPipStartPosition(Number.isFinite(Number(sourceLesson.initial_tile))
-        ? Number(sourceLesson.initial_tile)
-        : spawn.tileX)
-
-      setStarterCode(sourceLesson.starter_code || sourceLesson.initialCode || '')
-      if (Number(sourceLesson.module_id) === 1 && Number(sourceLesson.order_index) === 2 && !sourceLesson.starter_code && !sourceLesson.initialCode) {
-        setStarterCode('jump(4);')
-      }
+      setStarterCode(sourceLesson.starter_code || sourceLesson.initialCode || FREE_CODE_PROMPT)
       setNextLesson(nextLessonData || null)
     }
 
@@ -747,7 +686,6 @@ export default function LessonPage() {
     if (lintJava(currentFullCode).length > 0) return
     guidedCodeRef.current = currentFullCode
     guidedFinalStepRef.current = isFinalStep
-    setEventOffset(guidedEventsRef.current.length)
     setLiveCode(currentFullCode)
     setPlayToken(t => t + 1)
   }, [])
@@ -758,13 +696,19 @@ export default function LessonPage() {
       setTimeout(() => setToast(null), 3000)
       return
     }
-    setStarterCode(builtCode)
+    setStarterCode(builtCode || FREE_CODE_PROMPT)
     setLiveCode(builtCode)
     setCheck(null)
     handlePhaseChange('free')
   }, [completed])
 
   const handleFreeRun = useCallback((code) => {
+    const safety = validateFreeCode(code)
+    if (!safety.valid) {
+      setToast({ msg: safety.message || FREE_CODE_SAFETY_MESSAGE, tone:'amber', k:Date.now() })
+      setTimeout(() => setToast(null), 3000)
+      return
+    }
     const diagnostics = lintJava(code)
     if (diagnostics.length > 0) {
       setToast({ msg: diagnostics[0].message, tone:'amber', k:Date.now() })
@@ -774,7 +718,6 @@ export default function LessonPage() {
     guidedCodeRef.current = ''
     guidedEventsRef.current = []
     guidedFinalStepRef.current = false
-    setEventOffset(0)
     setCheck(null)
     setLiveCode(code)
     setPlayToken(t => t + 1)
@@ -783,7 +726,6 @@ export default function LessonPage() {
   const resetCanvasForReplay = useCallback(() => {
     setCheck(null)
     setLiveCode(starterCode)
-    setEventOffset(0)
     guidedCodeRef.current = ''
     guidedEventsRef.current = []
     guidedFinalStepRef.current = false
@@ -791,7 +733,12 @@ export default function LessonPage() {
   }, [starterCode])
 
   const handleResult = useCallback((res) => {
-    if (res?.error || !lesson) return
+    if (res?.error) {
+      setToast({ msg: res.error, tone:'amber', k:Date.now() })
+      setTimeout(() => setToast(null), 3000)
+      return
+    }
+    if (!lesson) return
     const isGuidedRun = phase === 'guided'
     guidedEventsRef.current = isGuidedRun
       ? [...guidedEventsRef.current, ...(res.events || [])]
@@ -837,11 +784,7 @@ export default function LessonPage() {
   }
 
   const handlePhaseChange = phaseName => {
-    if (phaseName === 'free' && !completed) {
-      setToast({ msg:'Complete Guided Mode first to unlock Free Code.', tone:'amber', k:Date.now() })
-      setTimeout(() => setToast(null), 3000)
-      return
-    }
+    if (phaseName === 'free' && !starterCode) setStarterCode(FREE_CODE_PROMPT)
     setPhase(phaseName)
   }
 
@@ -891,12 +834,12 @@ export default function LessonPage() {
         <div style={{ display:'flex', alignItems:'center', gap:8 }}>
           <div style={{ display:'flex', background:'rgba(255,255,255,0.07)', borderRadius:999, padding:3, gap:2 }}>
             {['guided', 'free'].map(p => (
-              <button key={p} type="button" onClick={() => handlePhaseChange(p)} disabled={p === 'free' && !completed} style={{
+              <button key={p} type="button" onClick={() => handlePhaseChange(p)} style={{
                 padding:'4px 13px', borderRadius:999, fontSize:11, fontWeight:600,
                 background: phase === p ? C.purple : 'transparent',
                 color: phase === p ? '#fff' : 'rgba(255,255,255,0.4)',
                 transition:'all .2s', display:'flex', alignItems:'center', gap:4,
-                userSelect:'none', border:'none', cursor:p === 'free' && !completed ? 'not-allowed' : 'pointer', opacity:p === 'free' && !completed ? .45 : 1
+                userSelect:'none', border:'none', cursor:'pointer'
               }}>
                 {p === 'guided' ? 'Guided' : 'Free Code'}
               </button>
@@ -937,9 +880,8 @@ export default function LessonPage() {
             resetToken={canvasResetToken}
             levelLabel={lesson.level_label}
             levelTitle={lesson.title}
-            initialPipPosition={pipStartPosition}
-            eventOffset={eventOffset}
             lessonId={lesson.id}
+            levelState={completed ? 'cleared' : playToken > 0 ? 'coding' : 'idle'}
             fullHeight
           />
         </div>
@@ -968,6 +910,7 @@ export default function LessonPage() {
           )}
           {panelOpen && phase === 'free' && (
             <FreeCodePanel
+              key={`${lesson.id}-${starterCode}`}
               lesson={lesson}
               starterCode={starterCode}
               check={check}

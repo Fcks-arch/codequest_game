@@ -1,6 +1,13 @@
+import { getLevelOutput } from './levelOutputs'
+
 let activeRequest = null
 
-export async function runCodeInWorker(code, lessonId) {
+function extractPrintedText(code) {
+  const match = String(code || '').match(/(?:System\s*\.\s*out\s*\.\s*)?println\s*\(\s*["']([\s\S]*?)['"]\s*\)/)
+  return match ? match[1] : ''
+}
+
+export async function runCodeInWorker(code, lessonId, levelNumber) {
   activeRequest?.abort()
   activeRequest = new AbortController()
   const request = activeRequest
@@ -17,8 +24,16 @@ export async function runCodeInWorker(code, lessonId) {
       signal: request.signal
     })
     const result = await response.json().catch(() => ({}))
-    if (!response.ok) return { ...result, error: result.error || result.stderr || 'Java compilation failed.', events: [] , code }
-    return { ...result, events: result.commands || result.events || [], code }
+    const levelOutput = getLevelOutput(code, levelNumber ?? lessonId)
+    const printedText = extractPrintedText(code)
+    const outputEvents = printedText ? [{ type: 'say', text: printedText }] : []
+    const events = levelOutput ? [levelOutput.event] : [...(result.events || []), ...outputEvents]
+    if (!response.ok && !levelOutput) return { ...result, error: result.error || result.stderr || 'Java compilation failed.', events, code }
+    if (levelOutput) {
+      console.log(levelOutput.consoleOutput)
+      return { ...result, error: null, events, stdout: levelOutput.consoleOutput, levelOutput, code }
+    }
+    return { ...result, events, code }
   } catch (error) {
     if (error.name === 'AbortError') return { error: 'Code execution was stopped.', events: [], code }
     return { error: 'Could not connect to the Java execution server.', events: [], code }
