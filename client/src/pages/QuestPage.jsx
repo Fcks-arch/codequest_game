@@ -28,7 +28,7 @@ export default function QuestPage() {
       .then(([moduleResponse, progressResponse]) => {
         const fetchedModules = moduleResponse.data || []
         const fetchedProgress = progressResponse.data || []
-        const completedIds = completedLessonIdsWithLocalFallback(fetchedProgress)
+        const completedIds = completedLessonIdsWithLocalFallback(fetchedProgress, user?.id)
 
         setModules(fetchedModules)
         setProgress(fetchedProgress)
@@ -56,14 +56,14 @@ export default function QuestPage() {
       })
       .catch(() => setError('The quest map could not be loaded. Please make sure the database is connected.'))
       .finally(() => setLoading(false))
-  }, [islandId, initialIslandId, location.search, location.state, userUnlocked])
+  }, [islandId, initialIslandId, location.search, location.state, user?.id, userUnlocked])
 
   const selectedModule = useMemo(
     () => modules.find(module => module.id === selectedIslandId) || modules[0],
     [modules, selectedIslandId]
   )
 
-  const completedIds = useMemo(() => completedLessonIdsWithLocalFallback(progress), [progress])
+  const completedIds = useMemo(() => completedLessonIdsWithLocalFallback(progress, user?.id), [progress, user?.id])
   const clearedCount = completedIds.size
   const islandStatuses = useMemo(
     () => getIslandStatuses(modules, completedIds, userUnlocked, progress),
@@ -86,7 +86,10 @@ export default function QuestPage() {
           </div>
           <div className="landing-quest__progress">
             <b>{clearedCount}</b><span>activities cleared</span>
-            <XpBar xp={user?.xp || 0} />
+            <XpBar
+              xp={user?.xp || 0}
+              level={user?.level || 1}
+            />
           </div>
         </section>
 
@@ -103,7 +106,7 @@ export default function QuestPage() {
           ) : error ? (
             <div className="landing-quest__message landing-quest__message--error">{error}</div>
           ) : (
-            <IslandMap modules={modules} progress={progress} selectedId={selectedIslandId} onSelect={selectModule} unlockedOverride={userUnlocked} />
+            <IslandMap modules={modules} progress={progress} selectedId={selectedIslandId} onSelect={selectModule} unlockedOverride={userUnlocked} userId={user?.id} />
           )}
         </section>
 

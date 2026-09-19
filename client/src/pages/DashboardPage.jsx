@@ -26,7 +26,7 @@ export default function DashboardPage() {
     Promise.all([axios.get('/api/lessons/modules'), axios.get('/api/progress')])
       .then(([moduleResponse, progressResponse]) => {
         const fetchedModules = moduleResponse.data || []
-        const completedIds = completedLessonIdsWithLocalFallback(progressResponse.data || [])
+        const completedIds = completedLessonIdsWithLocalFallback(progressResponse.data || [], user?.id)
         setModules(fetchedModules)
         setProgress(progressResponse.data)
 
@@ -42,15 +42,15 @@ export default function DashboardPage() {
       })
       .catch(() => setError('The quest map could not be loaded. Please make sure the updated database schema has been applied.'))
       .finally(() => setLoading(false))
-  }, [userUnlocked])
+  }, [user?.id, userUnlocked])
 
   const selectedModule = useMemo(
     () => modules.find(module => Number(module.id) === Number(selectedId)) || modules[0],
     [modules, selectedId]
   )
   const completedIds = useMemo(
-    () => completedLessonIdsWithLocalFallback(progress),
-    [progress]
+    () => completedLessonIdsWithLocalFallback(progress, user?.id),
+    [progress, user?.id]
   )
   const clearedCount = completedIds.size
   const islandStatuses = useMemo(
@@ -93,7 +93,7 @@ export default function DashboardPage() {
             <div><p className="section-kicker">YOUR SYLLABUS</p><h2>Quest map</h2></div>
             <span>Islands are lessons · activities are levels</span>
           </div>
-          {loading ? <div className="quest-loading">Loading your islands…</div> : error ? <div className="quest-error">{error}</div> : <IslandMap modules={modules} progress={progress} selectedId={selectedId} onSelect={selectModule} unlockedOverride={userUnlocked} />}
+          {loading ? <div className="quest-loading">Loading your islands…</div> : error ? <div className="quest-error">{error}</div> : <IslandMap modules={modules} progress={progress} selectedId={selectedId} onSelect={selectModule} unlockedOverride={userUnlocked} userId={user?.id} />}
         </section>
 
         {!loading && !error && selectedModule && (

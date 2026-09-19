@@ -62,8 +62,14 @@ export function Toast({ msg, tone }) {
   )
 }
 
-export function XpBar({ xp }) {
-  const into = xp % 100
+export function XpBar({ xp = 0, level = 1 }) {
+  const totalXp = Math.max(0, Number(xp) || 0)
+  const currentLevel = Math.max(1, Number(level) || 1)
+  const levelStartXp = (currentLevel - 1) * 100
+  const into = Math.min(
+    100,
+    Math.max(0, totalXp - levelStartXp)
+  )
   return (
     <div>
       <div style={{ height:8, background:C.onyx100, borderRadius:999, overflow:'hidden' }}>
@@ -72,7 +78,7 @@ export function XpBar({ xp }) {
           borderRadius:999, transition:'width .6s ease' }} />
       </div>
       <div style={{ fontSize:11, color:C.onyx400, marginTop:5, fontWeight:500 }}>
-        {into} / 100 XP to next level
+        Level {currentLevel} · {into} / 100 XP to next level
       </div>
     </div>
   )

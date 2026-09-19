@@ -183,7 +183,7 @@ const PIP_RENDER_HEIGHT = 96
 // actually saved to the right path) rather than the bug persisting.
 const BUILD_TAG = 'GameCanvas 2026-08-19b (exact map-boundary continuation and next-map preload)'
 
-export default function GameCanvas({ playToken, code, onResult, target, lessonData, resetToken = 0, fullHeight, levelLabel, levelTitle, initialPipPosition, eventOffset = 0, lessonId }) {
+export default function GameCanvas({ playToken, code, onResult, onCharacterPosition, target, lessonData, resetToken = 0, fullHeight, levelLabel, levelTitle, initialPipPosition, eventOffset = 0, lessonId, executionMode = 'guided' }) {
   useEffect(() => { console.log('[CodeQuest]', BUILD_TAG) }, [])
   
   const cvs    = useRef(null)
@@ -609,11 +609,33 @@ export default function GameCanvas({ playToken, code, onResult, target, lessonDa
       if (ctx) {
         const bob = Math.sin(t / 500) * 3 // gentle 3px sway, ~1 cycle/sec
         drawScene(ctx, lastPipX.current, 0, false, 'idle', bob, t, pipAlphaRef.current)
+
+        if (onCharacterPosition && cvs.current) {
+          const rect = cvs.current.getBoundingClientRect()
+          const routeTiles = Math.max(1, totalTiles)
+          const posInMap = ((lastPipX.current % routeTiles) + routeTiles) % routeTiles
+          const tileWidth = rect.width / routeTiles
+          const characterX = rect.left + posInMap * tileWidth + tileWidth / 2
+          const feetY = Number.isFinite(groundLineRef.current)
+            ? groundLineRef.current
+            : canvasH * 0.72 - 26
+          const characterY = rect.top + feetY - PIP_RENDER_HEIGHT / 2
+
+          onCharacterPosition({
+            x: characterX,
+            y: characterY
+          })
+        }
       }
       idleRaf.current = requestAnimationFrame(frame)
     }
     idleRaf.current = requestAnimationFrame(frame)
-  }, [drawScene])
+  }, [
+    canvasH,
+    drawScene,
+    onCharacterPosition,
+    totalTiles
+  ])
 
   const stopIdleLoop = useCallback(() => {
     idleLoopRunning.current = false
@@ -643,10 +665,21 @@ export default function GameCanvas({ playToken, code, onResult, target, lessonDa
     const executionVersion = executionVersionRef.current
     let events = []
     let executionFinished = false
-    runCodeInWorker(code, lessonId).then(res => {
+    runCodeInWorker(code, lessonId, undefined, executionMode).then(res => {
       if (cancelled || executionVersion !== executionVersionRef.current) return
       executionFinished = true
       events = (res.events || []).slice(Math.max(0, eventOffset))
+      const returnedOutput = String(
+        res.stdout || res.output || ''
+      ).trim()
+      const hasOutputEvent = events.some(event =>
+        ['say', 'speak', 'levelOutput', 'output', 'print', 'console', 'stdout']
+          .includes(event?.type)
+      )
+
+      if (returnedOutput && !hasOutputEvent) {
+        events.push({ type: 'say', text: returnedOutput })
+      }
       if (res.error) {
       movementRunning.current = false
       setRunState('error'); setErrMsg(res.error)
@@ -664,6 +697,24 @@ export default function GameCanvas({ playToken, code, onResult, target, lessonDa
       const nextTile = Math.max(0, Math.round(x))
       const nextMap = getMapForPosition(x)
       setCurrentMap(previousMap => previousMap === nextMap ? previousMap : nextMap)
+
+      if (onCharacterPosition && cvs.current) {
+        const rect = cvs.current.getBoundingClientRect()
+        const routeTiles = Math.max(1, totalTiles)
+        const posInMap = ((x % routeTiles) + routeTiles) % routeTiles
+        const tileWidth = rect.width / routeTiles
+        const characterX = rect.left + posInMap * tileWidth + tileWidth / 2
+        const feetY = Number.isFinite(groundLineRef.current)
+          ? groundLineRef.current
+          : canvasH * 0.72 - 26
+        const characterY = rect.top + feetY - PIP_RENDER_HEIGHT / 2
+
+        onCharacterPosition({
+          x: characterX,
+          y: characterY
+        })
+      }
+
       if (nextTile === reportedTile) return
       reportedTile = nextTile
       setTileProgress(nextTile)
@@ -686,19 +737,15 @@ export default function GameCanvas({ playToken, code, onResult, target, lessonDa
         return
       }
       const ev = events[i]
-      // Directional tile movement is intentionally disabled for the restored
-      // static-platform canvas. Consume legacy movement events so Pip stays
-      // grounded at the level start while idle animation continues.
-      if (ev.type === 'moveRight' || ev.type === 'jump') {
-        i++
-        step()
-      } else if (ev.type === 'moveRight') {
-        const from = pipX, to = pipX + ev.amount
-        const pose = Math.abs(ev.amount) >= RUN_THRESHOLD ? 'run' : 'walk'
+      if (ev.type === 'moveRight') {
+        const from = pipX
+        const amount = Number(ev.amount) || 0
+        const to = pipX + amount
+        const pose = Math.abs(amount) >= RUN_THRESHOLD ? 'run' : 'walk'
         // Short clips used to finish in only three or four rAF callbacks,
         // which moved Pip visibly but left too little time to show a gait.
         // Give each tile enough time for several walk/run frame advances.
-        const start = performance.now(), dur = Math.max(900, Math.abs(ev.amount) * 500)
+        const start = performance.now(), dur = Math.max(900, Math.abs(amount) * 500)
         function fr(t) {
           if (cancelled || executionVersion !== executionVersionRef.current) return
           if (previousTime === null) previousTime = t
@@ -720,8 +767,9 @@ export default function GameCanvas({ playToken, code, onResult, target, lessonDa
             pipX = to
             if (isFinalStep && exitAction === 'fade_out') pipAlphaRef.current = 0
             reportProgress(pipX)
-            setRunMovedTiles(previous => previous + ev.amount)
+            setRunMovedTiles(previous => previous + amount)
             i++
+            previousTime = null
             step()
           }
         }
@@ -775,26 +823,50 @@ export default function GameCanvas({ playToken, code, onResult, target, lessonDa
             const p = Math.min(1, (t - landStart) / landDur)
             drawScene(ctx, pipX, 0, false, 'land', 0, t - landStart)
             if (p < 1) raf.current = requestAnimationFrame(lfr)
-            else { drawScene(ctx, pipX, 0, false, 'idle', 0); i++; step() }
+            else {
+              drawScene(ctx, pipX, 0, false, 'idle', 0)
+              i++
+              previousTime = null
+              step()
+            }
           }
           raf.current = requestAnimationFrame(lfr)
         }
-      } else if (ev.type === 'say' || ev.type === 'speak' || ev.type === 'levelOutput') {
-        setBubble(ev.text)
+      } else if (
+        ev.type === 'say' ||
+        ev.type === 'speak' ||
+        ev.type === 'levelOutput' ||
+        ev.type === 'output' ||
+        ev.type === 'print' ||
+        ev.type === 'console' ||
+        ev.type === 'stdout'
+      ) {
+        const outputText = String(
+          ev.text ?? ev.message ?? ev.output ?? ev.stdout ?? ''
+        ).trim()
+
+        if (!outputText) {
+          i++
+          step()
+          return
+        }
+
+        setBubble(outputText)
         setBubbleOpacity(1)
-        // Same horizontal placement as the character (see CX in drawScene):
-        // centered over Pip's current tile, clamped so the bubble can't
-        // overflow past the edge of the game area when he's near either side.
+        // Anchor the output bubble to the same tile center used by Pip's
+        // sprite, then place its pointer just above Pip's head.
         const localX = ((pipX % totalTiles) + totalTiles) % totalTiles
-        const bubbleLeft = (localX / totalTiles) * 100
-        const mapImage = imgs.current.background
-        const mapScale = mapImage ? Math.min(canvasW / mapImage.naturalWidth, canvasH / mapImage.naturalHeight) : 1
-        const mapHeight = mapImage ? mapImage.naturalHeight * mapScale : canvasH
-        const mapTop = mapImage ? (canvasH - mapHeight) / 2 : 0
-        const mapFeet = mapImage ? mapTop + groundFraction * mapHeight : canvasH * 0.72 - 26
-        const characterHeight = PIP_RENDER_HEIGHT
+        const tileWidth = canvasW / Math.max(1, totalTiles)
+        const characterCenterX = localX * tileWidth
+        const characterFeetY = Number.isFinite(groundLineRef.current)
+          ? groundLineRef.current
+          : canvasH * 0.72 - 26
+        const characterHeadY = characterFeetY - PIP_RENDER_HEIGHT
+        const bubbleLeft = (characterCenterX / canvasW) * 100
+        const bubbleTop = ((characterHeadY - 8) / canvasH) * 100
+
         setBubbleX(Math.min(94, Math.max(6, bubbleLeft)))
-        setBubbleY(Math.min(82, Math.max(8, ((mapFeet - characterHeight - 16) / canvasH) * 100)))
+        setBubbleY(Math.min(82, Math.max(8, bubbleTop)))
         drawScene(ctx, pipX, 0, false, 'idle', 0)
         setTimeout(() => setBubbleOpacity(0), 2400)
         setTimeout(() => {
@@ -857,7 +929,7 @@ export default function GameCanvas({ playToken, code, onResult, target, lessonDa
       />
       {bubble && (
         <div className="toast-pop" style={{
-          position:'absolute', top:`${bubbleY}%`, left:`${bubbleX}%`, transform:'translate(-50%, -100%)', opacity:bubbleOpacity, transition:'opacity 600ms ease', pointerEvents:'none',
+          position:'absolute', top:`${bubbleY}%`, left:`${bubbleX}%`, transform:'translate(-50%, -100%)', opacity:bubbleOpacity, transition:'opacity 600ms ease', pointerEvents:'none', zIndex:100, whiteSpace:'pre-wrap',
           background:'#fff', color:C.onyx,
           padding:'10px 16px', borderRadius:12, fontSize:14, fontWeight:500,
           boxShadow:'0 4px 14px rgba(15,23,42,.18)', maxWidth:220, width:'max-content',

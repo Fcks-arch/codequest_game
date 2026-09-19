@@ -35,11 +35,11 @@ ${studentCode}
 `
 
 async function executeJava(req, res) {
-  const { code, lessonId } = req.body || {}
+  const { code, lessonId, mode = 'guided' } = req.body || {}
   if (typeof code !== 'string' || !code.trim()) {
     return res.status(400).json({ error: 'Java code is required.', commands: [], events: [] })
   }
-  if (!validateFreeCode(code)) {
+  if (mode === 'free' && !validateFreeCode(code)) {
     return res.status(422).json({ error: FREE_CODE_SAFETY_MESSAGE, commands: [], events: [], code })
   }
 

@@ -7,7 +7,7 @@ function extractPrintedText(code) {
   return match ? match[1] : ''
 }
 
-export async function runCodeInWorker(code, lessonId, levelNumber) {
+export async function runCodeInWorker(code, lessonId, levelNumber, mode = 'guided') {
   activeRequest?.abort()
   activeRequest = new AbortController()
   const request = activeRequest
@@ -20,15 +20,33 @@ export async function runCodeInWorker(code, lessonId, levelNumber) {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {})
       },
-      body: JSON.stringify({ code, lessonId }),
+      body: JSON.stringify({ code, lessonId, mode }),
       signal: request.signal
     })
     const result = await response.json().catch(() => ({}))
     const levelOutput = getLevelOutput(code, levelNumber ?? lessonId)
     const printedText = extractPrintedText(code)
-    const outputEvents = printedText ? [{ type: 'say', text: printedText }] : []
-    const events = levelOutput ? [levelOutput.event] : [...(result.events || []), ...outputEvents]
-    if (!response.ok && !levelOutput) return { ...result, error: result.error || result.stderr || 'Java compilation failed.', events, code }
+    const stdoutText = String(
+      result.stdout || result.output || result.message || ''
+    ).trim()
+    const outputText = printedText || stdoutText
+    const outputEvents = outputText
+      ? [{ type: 'say', text: outputText }]
+      : []
+    const events = levelOutput
+      ? [levelOutput.event]
+      : [...(result.events || []), ...outputEvents]
+    if (!response.ok && !levelOutput) {
+      return {
+        ...result,
+        error:
+          result.error ||
+          result.stderr ||
+          `Java execution failed (HTTP ${response.status}).`,
+        events,
+        code
+      }
+    }
     if (levelOutput) {
       console.log(levelOutput.consoleOutput)
       return { ...result, error: null, events, stdout: levelOutput.consoleOutput, levelOutput, code }

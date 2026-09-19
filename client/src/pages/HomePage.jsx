@@ -58,10 +58,10 @@ export default function HomePage() {
           <div className="landing-pip" role="img" aria-label="Pip the knight" />
 
           <p className="landing-eyebrow">Welcome back, {user.name?.split(' ')[0] || 'knight'}</p>
-          <h1>Learn JavaScript.<br /><em>Conquer the Realm.</em></h1>
+          <h1>Learn Java.<br /><em>Conquer the Realm.</em></h1>
           <p className="landing-copy">
             {user.section || 'BSIT'} · Level {user.level || 1} · {completedIds.size} of {totalActivities || '—'} activities cleared.
-            Pick up where you left off and guide Pip with real JavaScript.
+            Pick up where you left off and guide Pip with real Java.
           </p>
           <button type="button" className="landing-cta" onClick={beginQuest} disabled={loading}>
             <Ico n="play" s={18} c="#2b1a0e" />
@@ -114,10 +114,10 @@ export default function HomePage() {
         <div className="landing-pip" role="img" aria-label="Pip the knight" />
 
         <p className="landing-eyebrow">A Knight&apos;s Quest in Code</p>
-        <h1>Learn JavaScript.<br /><em>Conquer the Realm.</em></h1>
+        <h1>Learn Java.<br /><em>Conquer the Realm.</em></h1>
         <p className="landing-copy">
           CodeQuest turns programming lessons into a grand adventure — explore islands,
-          clear coding challenges, and guide Pip the knight with real JavaScript.
+          clear coding challenges, and guide Pip the knight with real Java.
         </p>
         <Link to="/login" className="landing-cta">
           <Ico n="play" s={18} c="#2b1a0e" />
