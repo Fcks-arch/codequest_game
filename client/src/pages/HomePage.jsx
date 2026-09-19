@@ -58,10 +58,10 @@ export default function HomePage() {
           <div className="landing-pip" role="img" aria-label="Pip the knight" />
 
           <p className="landing-eyebrow">Welcome back, {user.name?.split(' ')[0] || 'knight'}</p>
-          <h1>Learn JavaScript.<br /><em>Conquer the Realm.</em></h1>
+          <h1>Learn Java.<br /><em>Conquer the Realm.</em></h1>
           <p className="landing-copy">
             {user.section || 'BSIT'} · Level {user.level || 1} · {completedIds.size} of {totalActivities || '—'} activities cleared.
-            Pick up where you left off and guide Pip with real JavaScript.
+            Pick up where you left off and guide Pip with real Java.
           </p>
           <button type="button" className="landing-cta" onClick={beginQuest} disabled={loading}>
             <Ico n="play" s={18} c="#2b1a0e" />

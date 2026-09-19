@@ -7,8 +7,11 @@ import {
   Trophy,
   LogOut,
   ShieldCheck,
+  ClipboardList,
+  UsersRound,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+
 
 const items = [
   {
@@ -36,6 +39,16 @@ const items = [
     icon: Trophy,
     label: 'Leaderboard',
   },
+  {
+    id: 'quizzes',
+    icon: ClipboardList,
+    label: 'Quiz Maker',
+  },
+  {
+    id: 'classes',
+    label: 'Classes',
+    icon: UsersRound
+  }
 ];
 
 export default function TeacherNav({ page, setPage }) {
