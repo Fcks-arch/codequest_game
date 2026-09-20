@@ -3,6 +3,7 @@ import './PlayerDeath.css'
 
 export default function PlayerDeath({
   wrongAnswers = 0,
+  strikeToken = 0,
   isDying = false,
   position = null,
   onAnimationComplete,
@@ -24,10 +25,7 @@ export default function PlayerDeath({
   }, [])
 
   useEffect(() => {
-    if (wrongAnswers <= 0) {
-      setShowLightning(false)
-      return
-    }
+    if (strikeToken <= 0) return
 
     setShowLightning(true)
 
@@ -46,7 +44,7 @@ export default function PlayerDeath({
     }, 700)
 
     return () => clearTimeout(timer)
-  }, [wrongAnswers])
+  }, [strikeToken])
 
   useEffect(() => {
     if (!isDying) return

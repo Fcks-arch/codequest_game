@@ -1531,6 +1531,7 @@ const [isDying, setIsDying] = useState(false)
 const [showGameOver, setShowGameOver] = useState(false)
 const lives = Math.max(0, MAX_LIVES - wrongAnswers)
 const [deathPosition, setDeathPosition] = useState(null)
+const [lightningToken, setLightningToken] = useState(0)
 const [guidedResetKey, setGuidedResetKey] = useState(0)
   const completionPromiseRef = useRef(null)
 const guidedCodeRef = useRef('')
@@ -1655,6 +1656,7 @@ const deathResolveRef = useRef(null)
     )
     setIsDying(false)
     setDeathPosition(null)
+    setLightningToken(0)
     setGuidedResetKey(0)
 
     guidedCodeRef.current = ''
@@ -1874,12 +1876,12 @@ const deathResolveRef = useRef(null)
   ])
 
   useEffect(() => {
-<<<<<<< HEAD
     if (wrongAnswers >= MAX_LIVES && !isDying) {
       setShowGameOver(true)
     }
   }, [isDying, wrongAnswers])
-=======
+
+  useEffect(() => {
     if (!lesson || hasPlayedIntro) return
 
     const lessonNumber = Number(
@@ -1897,7 +1899,6 @@ const deathResolveRef = useRef(null)
     setIsIntroCutscene(true)
     setIntroToken(token => token + 1)
   }, [lesson, hasPlayedIntro, relativeLevel])
->>>>>>> e2c703a (Add Cloudflare config)
 
   /* =========================================================
      PHASE CHANGE
@@ -2054,6 +2055,7 @@ const deathResolveRef = useRef(null)
       )
 
       setWrongAnswers(nextWrongAnswers)
+      setLightningToken(token => token + 1)
       setIslandLives(
         activeIslandId,
         MAX_LIVES - nextWrongAnswers
@@ -2818,6 +2820,7 @@ const deathResolveRef = useRef(null)
       {/* PLAYER DEATH */}
       <PlayerDeath
         wrongAnswers={wrongAnswers}
+        strikeToken={lightningToken}
         isDying={isDying}
         position={deathPosition}
         onAnimationComplete={finishLightningDeath}

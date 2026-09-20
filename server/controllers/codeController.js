@@ -55,7 +55,7 @@ async function executeJava(req, res) {
 
     await execFileAsync('javac', ['Main.java'], {
       cwd: tempDir,
-      env: CHILD_ENV
+      env: CHILD_ENV,
       timeout: EXECUTION_TIMEOUT_MS,
       windowsHide: true,
       maxBuffer: 1024 * 1024
@@ -63,7 +63,7 @@ async function executeJava(req, res) {
 
     const { stdout, stderr } = await execFileAsync('java', ['Main'], {
       cwd: tempDir,
-      env: CHILD_ENV
+      env: CHILD_ENV,
       timeout: EXECUTION_TIMEOUT_MS,
       windowsHide: true,
       maxBuffer: 1024 * 1024
