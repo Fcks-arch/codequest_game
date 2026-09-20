@@ -10,6 +10,8 @@ const TABS = [
   { to: '/profile', label: 'Profile' },
   { to: '/leaderboard', label: 'Leaderboard' },
   { to: '/progress', label: 'My Progress' },
+  { to: '/quizzes', label: 'Quizzes' },
+  { to: '/classes',label: 'My Classes'},
 ]
 
 export default function QuestNav() {

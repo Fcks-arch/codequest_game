@@ -12,7 +12,9 @@ import LeaderboardPage from './pages/LeaderboardPage'
 import ProgressPage from './pages/ProgressPage'
 import ProfilePage from './pages/ProfilePage'
 import PostTestPage from './pages/PostTestPage'
+import QuizPage from './pages/QuizPage'
 import TeacherDashboardPage from './pages/TeacherDashboardPage'
+import JoinClassPage from './pages/JoinClassPage';
 
 function LoadingScreen() {
   return (
@@ -64,6 +66,10 @@ function AppRoutes() {
         <PrivateRoute><PostTestPage/></PrivateRoute>
       }/>
 
+      <Route path="/quizzes" element={
+        <PrivateRoute><QuizPage/></PrivateRoute>
+      }/>
+
       <Route path="/island/:id" element={
         <PrivateRoute><IslandPage/></PrivateRoute>
       }/>
@@ -73,6 +79,8 @@ function AppRoutes() {
       }/>
 
       <Route path="*" element={<Navigate to={user ? '/quest' : '/login'} replace/>}/>
+      <Route path="/classes" element={<JoinClassPage />}
+/>
     </Routes>
   )
 }

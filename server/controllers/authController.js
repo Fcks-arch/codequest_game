@@ -5,6 +5,15 @@ const db     = require('../config/db')
 const { OAuth2Client } = require('google-auth-library')
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID)
+const nodemailer = require('nodemailer')
+
+const mailer = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS
+  }
+})
 
 // POST /api/auth/register
 async function register(req, res) {
@@ -216,39 +225,61 @@ async function updateProfile(req, res) {
 }
 
 // POST /api/auth/forgot-password
-// NOTE: no email service is wired up yet — the reset link is returned directly
-// in the response so the frontend can display it. Swap this for a real email
-// send (nodemailer, etc.) later without changing the frontend contract.
 async function forgotPassword(req, res) {
-  const { email } = req.body
+  const email = String(req.body.email || '').trim()
   if (!email) return res.status(400).json({ message: 'Email is required.' })
 
+  // Same reply every time, so the form can't reveal which emails exist.
+  const generic = {
+    message: 'If that email is registered, a reset link has been sent.'
+  }
+
   try {
-    const [rows] = await db.query('SELECT id, google_id FROM users WHERE email = ?', [email])
-
-    // Always respond the same way whether or not the account exists,
-    // so the form can't be used to check which emails are registered.
-    if (rows.length === 0) {
-      return res.json({ message: 'If that email is registered, a reset link has been created.' })
-    }
-
+    const [rows] = await db.query(
+      'SELECT id, password FROM users WHERE email = ?',
+      [email]
+    )
     const user = rows[0]
-    if (user.google_id) {
-      // Google-only accounts don't have a local password to reset
-      return res.status(400).json({ message: 'This account uses Google Sign-In. Please log in with Google instead.' })
+
+    // Only accounts that actually have a local password can reset it.
+    if (user && user.password) {
+      const token = crypto.randomBytes(32).toString('hex')
+      const tokenHash = crypto.createHash('sha256').update(token).digest('hex')
+
+      // Expiry is computed by MySQL so server/database timezones can't disagree.
+      await db.query(
+        `UPDATE users
+         SET reset_token = ?, reset_token_expires = DATE_ADD(NOW(), INTERVAL 1 HOUR)
+         WHERE id = ?`,
+        [tokenHash, user.id]
+      )
+
+            const clientOrigin = process.env.CLIENT_ORIGIN || 'http://localhost:5173'
+      const resetLink = `${clientOrigin}/reset-password?token=${token}`
+
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('RESET LINK (dev only):', resetLink)
+      }
+
+      try {
+        await mailer.sendMail({
+          from: `"CodeQuest" <${process.env.EMAIL_USER}>`,
+          to: email,
+          subject: 'Reset your CodeQuest password',
+          html: `
+            <p>You asked to reset your CodeQuest password.</p>
+            <p><a href="${resetLink}">Click here to set a new password</a></p>
+            <p>This link expires in 1 hour. If you didn't ask for this, you can ignore this email.</p>
+          `
+        })
+      } catch (mailErr) {
+        console.error('EMAIL SEND ERROR:', mailErr)
+      }
     }
 
-    const token = crypto.randomBytes(32).toString('hex')
-    const expires = new Date(Date.now() + 60 * 60 * 1000) // 1 hour
-
-    await db.query('UPDATE users SET reset_token = ?, reset_token_expires = ? WHERE id = ?', [token, expires, user.id])
-
-    const clientOrigin = process.env.CLIENT_ORIGIN || 'http://localhost:5173'
-    const resetLink = `${clientOrigin}/reset-password?token=${token}`
-
-    res.json({ message: 'Reset link created.', resetLink })
+    res.json(generic)
   } catch (err) {
-    console.error(err)
+    console.error('FORGOT PASSWORD ERROR:', err)
     res.status(500).json({ message: 'Server error while creating reset link.' })
   }
 }
@@ -258,13 +289,18 @@ async function resetPassword(req, res) {
   const { token, password } = req.body
   if (!token || !password)
     return res.status(400).json({ message: 'Token and new password are required.' })
-  if (password.length < 6)
-    return res.status(400).json({ message: 'Password must be at least 6 characters.' })
+  if (password.length < 8)
+    return res.status(400).json({ message: 'Password must be at least 8 characters.' })
 
   try {
+    const tokenHash = crypto
+      .createHash('sha256')
+      .update(String(token))
+      .digest('hex')
+
     const [rows] = await db.query(
       'SELECT id FROM users WHERE reset_token = ? AND reset_token_expires > NOW()',
-      [token]
+      [tokenHash]
     )
     if (rows.length === 0)
       return res.status(400).json({ message: 'This reset link is invalid or has expired.' })
@@ -277,9 +313,10 @@ async function resetPassword(req, res) {
 
     res.json({ message: 'Password updated. You can now log in.' })
   } catch (err) {
-    console.error(err)
+    console.error('RESET PASSWORD ERROR:', err)
     res.status(500).json({ message: 'Server error while resetting password.' })
   }
 }
+
 
 module.exports = { register, login, googleAuth, forgotPassword, resetPassword, getMe, getProfile, updateProfile }
