@@ -194,8 +194,8 @@ textarea:focus { outline: none; }
   margin-bottom: 8px;
   background-image: url('/assets/pip-idle.png');
   background-repeat: no-repeat;
-  background-position: -38px -351px;
-  background-size: auto;
+  background-position: -24px -120px;
+  background-size: 1152px auto;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
   filter: drop-shadow(0 8px 16px rgba(0, 0, 0, .55));
@@ -609,7 +609,7 @@ textarea:focus { outline: none; }
 @media (max-width:760px) {
   .landing-scene__bg { object-position: center 30%; }
   .landing-hero { padding-top: 32px; min-height: 460px; }
-  .landing-pip { width: 96px; height: 139px; background-position: -30px -281px; background-size: 1280px auto; }
+  .landing-pip { width: 96px; height: 139px; background-position: -19px -96px; background-size: 922px auto; }
   .landing-copy { font-size: 16px; }
   .landing-steps { grid-template-columns: 1fr; padding-bottom: 36px; }
   .quest-header { padding:12px 16px; }

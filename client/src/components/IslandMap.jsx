@@ -36,8 +36,8 @@ function Island({ module, status, selected, onSelect }) {
   )
 }
 
-export default function IslandMap({ modules, progress, selectedId, onSelect, unlockedOverride }) {
-  const completedIds = completedLessonIdsWithLocalFallback(progress)
+export default function IslandMap({ modules, progress, selectedId, onSelect, unlockedOverride, userId }) {
+  const completedIds = completedLessonIdsWithLocalFallback(progress, userId)
   const statuses = getIslandStatuses(modules, completedIds, unlockedOverride, progress)
 
   return (

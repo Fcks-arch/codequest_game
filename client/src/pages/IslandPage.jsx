@@ -1,12 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import axios from 'axios'
+import { useAuth } from '../context/AuthContext'
 import { Ico, Pill } from '../components/UI'
 import { completedLessonIdsWithLocalFallback, getIslandStatuses, isActivityUnlocked } from '../utils/questProgress'
 
 export default function IslandPage() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const { user } = useAuth()
   const [modules, setModules] = useState([])
   const [progress, setProgress] = useState([])
   const [loading, setLoading] = useState(true)
@@ -28,8 +30,8 @@ export default function IslandPage() {
     [modules, id]
   )
   const completedIds = useMemo(
-    () => completedLessonIdsWithLocalFallback(progress),
-    [progress]
+    () => completedLessonIdsWithLocalFallback(progress, user?.id),
+    [progress, user?.id]
   )
   const islandStatuses = useMemo(
     () => getIslandStatuses(modules, completedIds, 1, progress),

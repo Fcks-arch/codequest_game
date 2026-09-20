@@ -11,9 +11,9 @@ export function completedLessonIds(progress) {
   )
 }
 
-export function completedLessonIdsWithLocalFallback(progress) {
+export function completedLessonIdsWithLocalFallback(progress, userId) {
   const completed = completedLessonIds(progress)
-  getLocallyCompletedLessonIds().forEach(id => completed.add(id))
+  getLocallyCompletedLessonIds(userId).forEach(id => completed.add(id))
   return completed
 }
 
