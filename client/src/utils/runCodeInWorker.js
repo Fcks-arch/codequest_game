@@ -1,4 +1,5 @@
 import { getLevelOutput } from './levelOutputs'
+const API_URL = import.meta.env.VITE_API_URL || ''
 
 let activeRequest = null
 
@@ -14,7 +15,7 @@ export async function runCodeInWorker(code, lessonId, levelNumber, mode = 'guide
 
   try {
     const token = localStorage.getItem('cq_token')
-    const response = await fetch('/api/execute/java', {
+    const response = await fetch(`${API_URL}/api/execute/java`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

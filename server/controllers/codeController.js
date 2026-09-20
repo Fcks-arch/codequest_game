@@ -5,7 +5,12 @@ const path = require('path')
 const { promisify } = require('util')
 
 const execFileAsync = promisify(execFile)
-const EXECUTION_TIMEOUT_MS = 2000
+const EXECUTION_TIMEOUT_MS = Number(process.env.EXECUTION_TIMEOUT_MS) || 2000
+const SECRET_KEYS = ['DB_HOST', 'DB_PORT', 'DB_USER', 'DB_PASSWORD', 'DB_NAME', 'JWT_SECRET',
+  'GOOGLE_CLIENT_ID', 'EMAIL_USER', 'EMAIL_PASS', 'TEACHER_SIGNUP_CODE']
+const CHILD_ENV = Object.fromEntries(
+  Object.entries(process.env).filter(([key]) => !SECRET_KEYS.includes(key))
+)
 const FREE_CODE_SAFETY_MESSAGE = "Safety Shield: That syntax isn't unlocked for this level yet! Stick to statements taught in this lesson."
 const FORBIDDEN_PATTERNS = [
   /\b(?:while|for|do|class|interface|enum|package|import|extends|implements|synchronized|native|reflect|reflection|Runtime|ProcessBuilder)\b/i,
@@ -50,6 +55,7 @@ async function executeJava(req, res) {
 
     await execFileAsync('javac', ['Main.java'], {
       cwd: tempDir,
+      env: CHILD_ENV
       timeout: EXECUTION_TIMEOUT_MS,
       windowsHide: true,
       maxBuffer: 1024 * 1024
@@ -57,6 +63,7 @@ async function executeJava(req, res) {
 
     const { stdout, stderr } = await execFileAsync('java', ['Main'], {
       cwd: tempDir,
+      env: CHILD_ENV
       timeout: EXECUTION_TIMEOUT_MS,
       windowsHide: true,
       maxBuffer: 1024 * 1024

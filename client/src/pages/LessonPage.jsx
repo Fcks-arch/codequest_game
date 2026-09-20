@@ -375,6 +375,7 @@ function validateLesson(lesson, events = [], code = '') {
 
 function GuidedPanel({
   lesson,
+  disabled = false,
   onUnlock,
   onNext,
   onStepCorrect,
@@ -465,7 +466,7 @@ function GuidedPanel({
        * Prevent multiple clicks while the current
        * answer animation is running.
        */
-      if (chosen) return
+      if (chosen || disabled) return
 
       if (!step) return
 
@@ -549,7 +550,8 @@ function GuidedPanel({
       guidedSteps.length,
       onStepCorrect,
       onWrongAnswer,
-      onAllStepsDone
+      onAllStepsDone,
+      disabled
     ]
   )
 
@@ -772,7 +774,7 @@ function GuidedPanel({
                     <button
                       key={`${String(opt)}-${i}`}
                       type="button"
-                      disabled={!!chosen}
+                      disabled={!!chosen || disabled}
                       onClick={() => pick(opt)}
                       className={
                         isWrong ? 'shake' : ''
@@ -809,7 +811,7 @@ function GuidedPanel({
 
                         fontWeight: 500,
 
-                        cursor: chosen
+                        cursor: chosen || disabled
                           ? 'default'
                           : 'pointer',
 
@@ -826,7 +828,7 @@ function GuidedPanel({
                         position: 'relative',
                         zIndex: 2,
 
-                        pointerEvents: chosen
+                        pointerEvents: chosen || disabled
                           ? 'none'
                           : 'auto'
                       }}
@@ -1016,6 +1018,7 @@ function GuidedPanel({
 
 function FreeCodePanel({
   lesson,
+  disabled = false,
   starterCode,
   check,
   onRun,
@@ -1184,6 +1187,7 @@ function FreeCodePanel({
         <button
           type="button"
           onClick={() => onRun(code)}
+          disabled={disabled}
           style={{
             flex: 1,
             background: C.purple,
@@ -1199,7 +1203,8 @@ function FreeCodePanel({
             gap: 6,
             boxShadow:
               '0 4px 12px rgba(79,70,229,.3)',
-            cursor: 'pointer'
+            cursor: disabled ? 'not-allowed' : 'pointer',
+            opacity: disabled ? 0.5 : 1
           }}
         >
           <Ico
@@ -1471,6 +1476,15 @@ export default function LessonPage() {
   const [playToken, setPlayToken] =
     useState(0)
 
+  const [introToken, setIntroToken] =
+    useState(0)
+
+  const [isIntroCutscene, setIsIntroCutscene] =
+    useState(false)
+
+  const [hasPlayedIntro, setHasPlayedIntro] =
+    useState(false)
+
   const [liveCode, setLiveCode] =
     useState('')
 
@@ -1619,6 +1633,10 @@ const deathResolveRef = useRef(null)
   useEffect(() => {
     completionPromiseRef.current = null
 
+    setLesson(null)
+    setIntroToken(0)
+    setIsIntroCutscene(false)
+    setHasPlayedIntro(false)
     setCompleted(false)
     setCompletedCode('')
     setIslandCleared(false)
@@ -1856,10 +1874,30 @@ const deathResolveRef = useRef(null)
   ])
 
   useEffect(() => {
+<<<<<<< HEAD
     if (wrongAnswers >= MAX_LIVES && !isDying) {
       setShowGameOver(true)
     }
   }, [isDying, wrongAnswers])
+=======
+    if (!lesson || hasPlayedIntro) return
+
+    const lessonNumber = Number(
+      lesson.order_index ||
+      lesson.level_label?.match(/\d+/)?.[0] ||
+      relativeLevel
+    )
+    const isLevelOne =
+      lessonNumber === 1 ||
+      lesson.title === "The Gate Golem's Riddle"
+
+    if (!isLevelOne) return
+
+    setHasPlayedIntro(true)
+    setIsIntroCutscene(true)
+    setIntroToken(token => token + 1)
+  }, [lesson, hasPlayedIntro, relativeLevel])
+>>>>>>> e2c703a (Add Cloudflare config)
 
   /* =========================================================
      PHASE CHANGE
@@ -1868,6 +1906,8 @@ const deathResolveRef = useRef(null)
   const handlePhaseChange =
     useCallback(
       phaseName => {
+        if (isIntroCutscene) return
+
         if (
           phaseName === 'free' &&
           !starterCode
@@ -1879,7 +1919,7 @@ const deathResolveRef = useRef(null)
 
         setPhase(phaseName)
       },
-      [starterCode]
+      [isIntroCutscene, starterCode]
     )
 
   /* =========================================================
@@ -1893,6 +1933,8 @@ const deathResolveRef = useRef(null)
         currentFullCode,
         isFinalStep
       ) => {
+        if (isIntroCutscene) return
+
         const diagnostics =
           lintJava(currentFullCode)
 
@@ -1926,7 +1968,7 @@ const deathResolveRef = useRef(null)
           token => token + 1
         )
       },
-      []
+      [isIntroCutscene]
     )
 
   /* =========================================================
@@ -2078,6 +2120,8 @@ const deathResolveRef = useRef(null)
 
   const handleFreeRun =
     useCallback(code => {
+      if (isIntroCutscene) return
+
       const safety =
         validateFreeCode(code)
 
@@ -2128,6 +2172,11 @@ const deathResolveRef = useRef(null)
       setPlayToken(
         token => token + 1
       )
+    }, [isIntroCutscene])
+
+  const handleIntroComplete =
+    useCallback(() => {
+      setIsIntroCutscene(false)
     }, [])
 
   /* =========================================================
@@ -2495,6 +2544,7 @@ const deathResolveRef = useRef(null)
                   onClick={() =>
                     handlePhaseChange(p)
                   }
+                  disabled={isIntroCutscene}
                   style={{
                     padding:
                       '4px 13px',
@@ -2517,7 +2567,8 @@ const deathResolveRef = useRef(null)
                     gap: 4,
                     userSelect: 'none',
                     border: 'none',
-                    cursor: 'pointer'
+                    cursor: isIntroCutscene ? 'not-allowed' : 'pointer',
+                    opacity: isIntroCutscene ? 0.5 : 1
                   }}
                 >
                   {p === 'guided'
@@ -2613,6 +2664,8 @@ const deathResolveRef = useRef(null)
         >
           <GameCanvas
             playToken={playToken}
+            introToken={introToken}
+            onIntroComplete={handleIntroComplete}
             code={liveCode}
             onResult={handleResult}
             onCharacterPosition={setDeathPosition}
@@ -2678,6 +2731,7 @@ const deathResolveRef = useRef(null)
               <GuidedPanel
                 key={`${lesson.id}-${guidedResetKey}`}
                 lesson={lesson}
+                disabled={isIntroCutscene}
                 onUnlock={
                   handleUnlock
                 }
@@ -2716,6 +2770,7 @@ const deathResolveRef = useRef(null)
               <FreeCodePanel
                 key={`${lesson.id}-${starterCode}`}
                 lesson={lesson}
+                disabled={isIntroCutscene}
                 starterCode={
                   starterCode
                 }

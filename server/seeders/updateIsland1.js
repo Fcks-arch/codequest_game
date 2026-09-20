@@ -20,6 +20,7 @@ const lessons = [
     flag_tile: 5,
     solution_code: 'System.out.println("Hello, Golem!");',
     tile_elevations: {},
+    ground_fraction: 0.655,
     guided_prompt: 'Which Java instruction precisely wakes the Gate Golem?',
     options: ['System.out.println("Hello, Golem!");', 'println("Hello, Golem!");', 'System.out.println("Hello, Golem!")', 'System.out.read("Hello, Golem!");'],
   },
@@ -31,7 +32,8 @@ const lessons = [
     initial_tile: 5,
     flag_tile: 9,
     solution_code: 'int doorCode = 42;',
-    tile_elevations: { 7: -20, 8: -20 },
+    tile_elevations: {},
+    ground_fraction: 0.655,
     guided_prompt: 'Which readable, high-level Java instruction stores the archive door code?',
     options: ['int doorCode = 42;', 'MOV AX, 42', 'int doorCode = 42', 'String doorCode = 42;'],
   },
@@ -121,7 +123,7 @@ async function main() {
       lesson.flag_tile, 0, 0, 0, `Use the exact solution: ${lesson.solution_code}`,
       codePattern(lesson.solution_code), lesson.solution_code, index + 1, 1, new Date(), lesson.background_image,
       lesson.concept, lesson.briefing, 10, 1, 10, lesson.initial_tile, lesson.flag_tile,
-      550 / 688, JSON.stringify({ tile_elevations: lesson.tile_elevations }),
+      lesson.ground_fraction, JSON.stringify({ tile_elevations: lesson.tile_elevations }),
     ])
 
     await connection.query(

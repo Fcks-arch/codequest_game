@@ -171,9 +171,21 @@ const RUN_THRESHOLD = 3
    you swap in a different background image, re-measure this (the top
    edge of its walkable grass strip, as a fraction of total image
    height) or the ground may float or sink relative to the character. */
-const BG_GRASS_FRACTION = 717 / 887
-const PIP_RENDER_WIDTH = 72
-const PIP_RENDER_HEIGHT = 96
+const TERRAIN1_BRIDGE_FRACTION = 0.655
+const BG_GRASS_FRACTION = TERRAIN1_BRIDGE_FRACTION
+const TERRAIN1_TILE_SCALE = 1.16
+const TERRAIN1_MAX_VISUAL_TILE = 9.25
+const PIP_RENDER_WIDTH = 58
+const PIP_RENDER_HEIGHT = 77
+
+function getVisualTilePosition(tile, totalTiles, backgroundPath) {
+  if (!String(backgroundPath).endsWith('/terrain1.png')) return tile
+
+  return Math.min(
+    TERRAIN1_MAX_VISUAL_TILE,
+    Math.max(0, tile * TERRAIN1_TILE_SCALE)
+  )
+}
 
 // Bump this string whenever this file changes. Log it (see the mount
 // effect below) so a quick look at the browser console tells you for
@@ -183,7 +195,7 @@ const PIP_RENDER_HEIGHT = 96
 // actually saved to the right path) rather than the bug persisting.
 const BUILD_TAG = 'GameCanvas 2026-08-19b (exact map-boundary continuation and next-map preload)'
 
-export default function GameCanvas({ playToken, code, onResult, onCharacterPosition, target, lessonData, resetToken = 0, fullHeight, levelLabel, levelTitle, initialPipPosition, eventOffset = 0, lessonId, executionMode = 'guided' }) {
+export default function GameCanvas({ playToken, introToken = 0, onIntroComplete, code, onResult, onCharacterPosition, target, lessonData, resetToken = 0, fullHeight, levelLabel, levelTitle, initialPipPosition, eventOffset = 0, lessonId, executionMode = 'guided' }) {
   useEffect(() => { console.log('[CodeQuest]', BUILD_TAG) }, [])
   
   const cvs    = useRef(null)
@@ -208,7 +220,10 @@ export default function GameCanvas({ playToken, code, onResult, onCharacterPosit
   const groundLineRef = useRef(0)
   const bgPath = lessonData?.background_image || '/assets/landscapes/terrain1.png'
   const totalTiles = Number(lessonData?.total_tiles) || DEFAULT_TILE_COUNT
-  const groundFraction = Number(lessonData?.ground_fraction) || BG_GRASS_FRACTION
+  const lessonGroundFraction = Number(lessonData?.ground_fraction)
+  const groundFraction = bgPath.endsWith('/terrain1.png')
+    ? TERRAIN1_BRIDGE_FRACTION
+    : lessonGroundFraction || BG_GRASS_FRACTION
   const config = typeof lessonData?.mechanics_config === 'string'
     ? JSON.parse(lessonData.mechanics_config)
     : lessonData?.mechanics_config
@@ -375,6 +390,7 @@ export default function GameCanvas({ playToken, code, onResult, onCharacterPosit
     // Determine which map we're on based on absolute position
     const mapNum = getMapForPosition(px)
     const posInMap = ((px % routeTiles) + routeTiles) % routeTiles
+    const visualTile = getVisualTilePosition(posInMap, routeTiles, bgPath)
 
     if (imgs.current.background) {
       const bg = imgs.current.background
@@ -449,7 +465,7 @@ export default function GameCanvas({ playToken, code, onResult, onCharacterPosit
       routeTiles - 1,
       Number.isFinite(configuredFlagTile) ? configuredFlagTile : Math.ceil((initialPipPosition || 0) + target)
     ))
-    const fx = flagTile * tileWidth
+    const fx = getVisualTilePosition(flagTile, routeTiles, bgPath) * tileWidth
     const flagH = TILE * 0.62
     const flagW = TILE * 0.22
     if (imgs.current.flagSprite) {
@@ -475,7 +491,7 @@ export default function GameCanvas({ playToken, code, onResult, onCharacterPosit
     const CW = PIP_RENDER_WIDTH
     const movementRenderHeight = PIP_RENDER_HEIGHT
     const totalBob = bounce + idleBob
-    const CX = Math.max(4, Math.min(W - CW - 4, posInMap * tileWidth - CW / 2))
+    const CX = Math.max(4, Math.min(W - CW - 4, visualTile * tileWidth - CW / 2))
     const pipFeetLine = Number.isFinite(characterFeetY) ? characterFeetY : getTileY(px)
     const CY_base = pipFeetLine - totalBob
 
@@ -526,7 +542,7 @@ export default function GameCanvas({ playToken, code, onResult, onCharacterPosit
             if (!Number.isFinite(dWidth) || !Number.isFinite(dHeight)) throw new Error('Invalid idle sprite dimensions.')
             const tileSize = tileWidth
             const startGridX = Math.max(4, tileSize * 0.04)
-            const rawDestX = startGridX + posInMap * tileSize + (tileSize - dWidth) / 2
+            const rawDestX = startGridX + visualTile * tileSize + (tileSize - dWidth) / 2
             const rawDestY = CY_base - dHeight
             const destX = Number.isFinite(rawDestX) ? rawDestX : 0
             const destY = Number.isFinite(rawDestY) ? rawDestY : feetLine - PIP_RENDER_HEIGHT
@@ -615,7 +631,8 @@ export default function GameCanvas({ playToken, code, onResult, onCharacterPosit
           const routeTiles = Math.max(1, totalTiles)
           const posInMap = ((lastPipX.current % routeTiles) + routeTiles) % routeTiles
           const tileWidth = rect.width / routeTiles
-          const characterX = rect.left + posInMap * tileWidth + tileWidth / 2
+          const visualTile = getVisualTilePosition(posInMap, routeTiles, bgPath)
+          const characterX = rect.left + visualTile * tileWidth + tileWidth / 2
           const feetY = Number.isFinite(groundLineRef.current)
             ? groundLineRef.current
             : canvasH * 0.72 - 26
@@ -647,6 +664,100 @@ export default function GameCanvas({ playToken, code, onResult, onCharacterPosit
     if (assetsReady) startIdleLoop()
     return () => stopIdleLoop()
   }, [assetsReady, startIdleLoop, stopIdleLoop])
+
+  useEffect(() => {
+    if (!introToken || !assetsReady) return
+
+    movementRunning.current = true
+    stopIdleLoop()
+    setRunState('running')
+    setErrMsg('')
+    setBubble(null)
+    setRunMovedTiles(0)
+
+    let cancelled = false
+    let pipX = 0
+    let tile = 0
+    let previousTime = null
+    let animationClock = 0
+    const ctx = cvs.current?.getContext('2d')
+
+    if (!ctx) return undefined
+
+    lastPipX.current = 0
+    currentTileRef.current = 0
+
+    const reportIntroProgress = x => {
+      lastPipX.current = x
+      currentTileRef.current = x
+      setTileProgress(Math.round(x))
+      if (onCharacterPosition && cvs.current) {
+        const rect = cvs.current.getBoundingClientRect()
+        const tileWidth = rect.width / Math.max(1, totalTiles)
+        const visualTile = getVisualTilePosition(x, totalTiles, bgPath)
+        const feetY = Number.isFinite(groundLineRef.current)
+          ? groundLineRef.current
+          : canvasH * 0.72 - 26
+        onCharacterPosition({
+          x: rect.left + visualTile * tileWidth + tileWidth / 2,
+          y: rect.top + feetY - PIP_RENDER_HEIGHT / 2
+        })
+      }
+    }
+
+    reportIntroProgress(0)
+
+    const step = () => {
+      if (cancelled) return
+      if (tile >= 5) {
+        movementRunning.current = false
+        pipX = 5
+        lastPipX.current = pipX
+        currentTileRef.current = pipX
+        reportIntroProgress(pipX)
+        drawScene(ctx, pipX, 0, false, 'idle', 0, 0, 1)
+        setRunState('idle')
+        onIntroComplete?.()
+        startIdleLoop()
+        return
+      }
+
+      const from = tile
+      const to = tile + 1
+      const start = performance.now()
+      const duration = 520
+      previousTime = null
+
+      const frame = time => {
+        if (cancelled) return
+        if (previousTime === null) previousTime = time
+        animationClock += Math.min(50, time - previousTime)
+        previousTime = time
+        const progress = Math.min(1, (time - start) / duration)
+        const eased = 1 - Math.pow(1 - progress, 3)
+        pipX = from + (to - from) * eased
+        reportIntroProgress(pipX)
+        drawScene(ctx, pipX, Math.sin(progress * Math.PI * 4) * 2.5, false, 'walk', 0, animationClock, 1)
+
+        if (progress < 1) {
+          raf.current = requestAnimationFrame(frame)
+        } else {
+          tile += 1
+          step()
+        }
+      }
+
+      raf.current = requestAnimationFrame(frame)
+    }
+
+    step()
+
+    return () => {
+      cancelled = true
+      movementRunning.current = false
+      if (raf.current) cancelAnimationFrame(raf.current)
+    }
+  }, [introToken, assetsReady]) // eslint-disable-line
 
   useEffect(() => {
     if (playToken === 0) return
@@ -703,7 +814,8 @@ export default function GameCanvas({ playToken, code, onResult, onCharacterPosit
         const routeTiles = Math.max(1, totalTiles)
         const posInMap = ((x % routeTiles) + routeTiles) % routeTiles
         const tileWidth = rect.width / routeTiles
-        const characterX = rect.left + posInMap * tileWidth + tileWidth / 2
+        const visualTile = getVisualTilePosition(posInMap, routeTiles, bgPath)
+        const characterX = rect.left + visualTile * tileWidth + tileWidth / 2
         const feetY = Number.isFinite(groundLineRef.current)
           ? groundLineRef.current
           : canvasH * 0.72 - 26
@@ -794,12 +906,12 @@ export default function GameCanvas({ playToken, code, onResult, onCharacterPosit
         function fr(t) {
           if (cancelled || executionVersion !== executionVersionRef.current) return
           const progress = Math.min(1, Math.max(0, (t - start) / dur))
-          const startX = startTile * tileWidth
-          const targetX = (startTile + jumpDistance) * tileWidth
+          const startX = getVisualTilePosition(startTile, totalTiles, bgPath) * tileWidth
+          const targetX = getVisualTilePosition(startTile + jumpDistance, totalTiles, bgPath) * tileWidth
           const currentX = startX + (targetX - startX) * progress
           const jumpArcHeight = Math.sin(progress * Math.PI) * jumpHeight
           const currentY = startY + (targetY - startY) * progress - jumpArcHeight
-          pipX = currentX / tileWidth
+          pipX = startTile + jumpDistance * progress
           reportProgress(pipX)
           drawScene(ctx, pipX, 0, false, 'jump', 0, t - start, pipAlphaRef.current, currentY)
           if (progress < 1) raf.current = requestAnimationFrame(fr)
@@ -857,7 +969,8 @@ export default function GameCanvas({ playToken, code, onResult, onCharacterPosit
         // sprite, then place its pointer just above Pip's head.
         const localX = ((pipX % totalTiles) + totalTiles) % totalTiles
         const tileWidth = canvasW / Math.max(1, totalTiles)
-        const characterCenterX = localX * tileWidth
+        const visualTile = getVisualTilePosition(localX, totalTiles, bgPath)
+        const characterCenterX = visualTile * tileWidth
         const characterFeetY = Number.isFinite(groundLineRef.current)
           ? groundLineRef.current
           : canvasH * 0.72 - 26
