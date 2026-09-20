@@ -2,6 +2,7 @@ import axios from 'axios'
 
 export const MAX_MAP_TILES = 15
 const COMPLETED_LESSONS_KEY = 'codequest_completed_lessons'
+const LIVES_KEY = 'codequest_lives'
 
 function completedLessonsKey(userId) {
   return userId
@@ -28,7 +29,44 @@ export function clearGameState() {
       .filter(key => key.startsWith(`${COMPLETED_LESSONS_KEY}_`))
       .forEach(key => localStorage.removeItem(key))
     localStorage.removeItem(COMPLETED_LESSONS_KEY)
+    Object.keys(localStorage)
+      .filter(key => key.startsWith(`${LIVES_KEY}_`))
+      .forEach(key => localStorage.removeItem(key))
   } catch (_) {}
+}
+
+function livesKey(islandId) {
+  const id = Number(islandId)
+  return Number.isFinite(id) && id > 0
+    ? `${LIVES_KEY}_${id}`
+    : null
+}
+
+export function getIslandLives(islandId, maxLives = 3) {
+  const key = livesKey(islandId)
+  if (!key) return maxLives
+
+  try {
+    const savedLives = Number(localStorage.getItem(key))
+    return Number.isFinite(savedLives)
+      ? Math.max(0, Math.min(maxLives, savedLives))
+      : maxLives
+  } catch (_) {
+    return maxLives
+  }
+}
+
+export function setIslandLives(islandId, lives) {
+  const key = livesKey(islandId)
+  if (!key) return
+
+  try {
+    localStorage.setItem(key, String(Math.max(0, Number(lives))))
+  } catch (_) {}
+}
+
+export function resetIslandLives(islandId, maxLives = 3) {
+  setIslandLives(islandId, maxLives)
 }
 
 function readCompletedLessons(userId) {

@@ -4,7 +4,12 @@ import axios from 'axios'
 import { useAuth } from '../context/AuthContext'
 import GameCanvas, { startBgMusic, stopBgMusic } from '../components/GameCanvas'
 import CodeEditor, { lintJava } from '../components/CodeEditor'
-import { markLessonCompleted } from '../utils/GameStateManager'
+import {
+  getIslandLives,
+  markLessonCompleted,
+  resetIslandLives,
+  setIslandLives
+} from '../utils/GameStateManager'
 import { getLessonByIslandAndLevel } from '../data/lessons'
 import IslandClearedModal from '../components/IslandClearedModal'
 import PlayerDeath from '../components/PlayerDeath'
@@ -1505,7 +1510,9 @@ export default function LessonPage() {
   /* NEW: wrong-answer/death state */
 const MAX_LIVES = 3
 
-const [wrongAnswers, setWrongAnswers] = useState(0)
+const [wrongAnswers, setWrongAnswers] = useState(() =>
+  MAX_LIVES - getIslandLives(activeIslandId, MAX_LIVES)
+)
 const [isDying, setIsDying] = useState(false)
 const [showGameOver, setShowGameOver] = useState(false)
 const lives = Math.max(0, MAX_LIVES - wrongAnswers)
@@ -1615,6 +1622,7 @@ const deathResolveRef = useRef(null)
     setCompleted(false)
     setCompletedCode('')
     setIslandCleared(false)
+    setShowGameOver(false)
     setXpGained(0)
     setToast(null)
     setNextLesson(null)
@@ -1623,7 +1631,10 @@ const deathResolveRef = useRef(null)
     setStarterCode('')
     setLiveCode('')
 
-    setWrongAnswers(0)
+    setWrongAnswers(
+      MAX_LIVES -
+        getIslandLives(activeIslandId, MAX_LIVES)
+    )
     setIsDying(false)
     setDeathPosition(null)
     setGuidedResetKey(0)
@@ -1844,6 +1855,12 @@ const deathResolveRef = useRef(null)
     relativeLevel
   ])
 
+  useEffect(() => {
+    if (wrongAnswers >= MAX_LIVES && !isDying) {
+      setShowGameOver(true)
+    }
+  }, [isDying, wrongAnswers])
+
   /* =========================================================
      PHASE CHANGE
      ========================================================= */
@@ -1943,6 +1960,7 @@ const deathResolveRef = useRef(null)
     useCallback(() => {
       setShowGameOver(false)
       setWrongAnswers(0)
+      resetIslandLives(activeIslandId, MAX_LIVES)
       setIsDying(false)
       setDeathPosition(null)
       setCompleted(false)
@@ -1973,7 +1991,10 @@ const deathResolveRef = useRef(null)
   const returnToMapAfterGameOver =
     useCallback(() => {
       setShowGameOver(false)
-      setWrongAnswers(0)
+      setWrongAnswers(
+        MAX_LIVES -
+          getIslandLives(activeIslandId, MAX_LIVES)
+      )
       setIsDying(false)
       setDeathPosition(null)
       deathResolveRef.current = null
@@ -1991,6 +2012,10 @@ const deathResolveRef = useRef(null)
       )
 
       setWrongAnswers(nextWrongAnswers)
+      setIslandLives(
+        activeIslandId,
+        MAX_LIVES - nextWrongAnswers
+      )
 
       if (MAX_LIVES - nextWrongAnswers === 0) {
         void triggerLightningDeath()
@@ -2121,7 +2146,10 @@ const deathResolveRef = useRef(null)
       guidedEventsRef.current = []
       guidedFinalStepRef.current = false
 
-      setWrongAnswers(0)
+      setWrongAnswers(
+        MAX_LIVES -
+          getIslandLives(activeIslandId, MAX_LIVES)
+      )
       setIsDying(false)
 
       setGuidedResetKey(
@@ -2131,7 +2159,7 @@ const deathResolveRef = useRef(null)
       setCanvasResetToken(
         token => token + 1
       )
-    }, [starterCode])
+    }, [activeIslandId, starterCode])
 
   /* =========================================================
      GAME CANVAS RESULT
@@ -2831,7 +2859,7 @@ const deathResolveRef = useRef(null)
                   cursor: 'pointer'
                 }}
               >
-                Restart Level
+                Restart to Level 1
               </button>
             </div>
           </div>
