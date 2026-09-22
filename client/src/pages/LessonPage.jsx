@@ -22,6 +22,11 @@ import {
 
 const FREE_CODE_PROMPT = '// Write your Java code here...'
 
+const LEVEL_START_POSITIONS = {
+  1: 0,
+  2: 5
+}
+
 function javaLabel(value) {
   return String(value || '')
     .replace(/JavaScript Foundations/g, 'JAVA FOUNDATIONS')
@@ -1465,6 +1470,9 @@ export default function LessonPage() {
     location.state?.relativeLevel || id
   )
 
+  const initialPipPosition =
+    LEVEL_START_POSITIONS[relativeLevel] ?? null
+
   const { user, updateXp } = useAuth()
 
   const [lesson, setLesson] = useState(null)
@@ -1519,6 +1527,9 @@ export default function LessonPage() {
     useState(null)
 
   const [canvasResetToken, setCanvasResetToken] =
+    useState(0)
+
+  const [replayToken, setReplayToken] =
     useState(0)
 
   /* NEW: wrong-answer/death state */
@@ -2187,6 +2198,7 @@ const deathResolveRef = useRef(null)
 
   const resetCanvasForReplay =
     useCallback(() => {
+      setPhase('guided')
       setCheck(null)
 
       setLiveCode(
@@ -2208,6 +2220,10 @@ const deathResolveRef = useRef(null)
       )
 
       setCanvasResetToken(
+        token => token + 1
+      )
+
+      setReplayToken(
         token => token + 1
       )
     }, [activeIslandId, starterCode])
@@ -2667,12 +2683,17 @@ const deathResolveRef = useRef(null)
           <GameCanvas
             playToken={playToken}
             introToken={introToken}
+            replayToken={replayToken}
             onIntroComplete={handleIntroComplete}
             code={liveCode}
             onResult={handleResult}
             onCharacterPosition={setDeathPosition}
             target={lesson.target_tiles}
             lessonData={lesson}
+            initialPipPosition={
+              initialPipPosition ??
+              (Number(lesson.initial_tile) || 0)
+            }
             resetToken={
               canvasResetToken
             }
@@ -2797,7 +2818,6 @@ const deathResolveRef = useRef(null)
                 }
                 onResetReplay={() => {
                   resetCanvasForReplay()
-                  setPhase('guided')
                 }}
                 onResetCanvas={
                   resetCanvasForReplay

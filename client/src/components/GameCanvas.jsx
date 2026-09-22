@@ -177,6 +177,10 @@ const TERRAIN1_TILE_SCALE = 1.16
 const TERRAIN1_MAX_VISUAL_TILE = 9.25
 const PIP_RENDER_WIDTH = 58
 const PIP_RENDER_HEIGHT = 77
+const START_X = 50
+const GOLEM_STOP_X = 420
+const PROXIMITY_THRESHOLD = 380
+const GOLEM_DIALOGUE = 'Hello, Golem!'
 
 function getVisualTilePosition(tile, totalTiles, backgroundPath) {
   if (!String(backgroundPath).endsWith('/terrain1.png')) return tile
@@ -193,14 +197,15 @@ function getVisualTilePosition(tile, totalTiles, backgroundPath) {
 // rounds of bug reports turned out to be an old copy of this file still
 // being served (stale dev server, browser cache, or the new file not
 // actually saved to the right path) rather than the bug persisting.
-const BUILD_TAG = 'GameCanvas 2026-08-19b (exact map-boundary continuation and next-map preload)'
+const BUILD_TAG = 'GameCanvas 2026-09-21a (cutscene replay and proximity dialogue)'
 
-export default function GameCanvas({ playToken, introToken = 0, onIntroComplete, code, onResult, onCharacterPosition, target, lessonData, resetToken = 0, fullHeight, levelLabel, levelTitle, initialPipPosition, eventOffset = 0, lessonId, executionMode = 'guided' }) {
+export default function GameCanvas({ playToken, introToken = 0, replayToken = 0, onIntroComplete, code, onResult, onCharacterPosition, target, lessonData, resetToken = 0, fullHeight, levelLabel, levelTitle, initialPipPosition, eventOffset = 0, lessonId, executionMode = 'guided' }) {
   useEffect(() => { console.log('[CodeQuest]', BUILD_TAG) }, [])
   
   const cvs    = useRef(null)
   const wrap   = useRef(null)
   const raf    = useRef(null)
+  const cutsceneRef = useRef(null)
   const idleRaf = useRef(null)
   const imgs   = useRef({})
   const idleImageRef = useRef(null)
@@ -208,6 +213,12 @@ export default function GameCanvas({ playToken, introToken = 0, onIntroComplete,
   const [bubbleX,  setBubbleX]  = useState(50) 
   const [bubbleY,  setBubbleY]  = useState(30) 
   const [bubbleOpacity, setBubbleOpacity] = useState(1)
+  const [pipX, setPipX] = useState(START_X)
+  const [isPlayingCutscene, setIsPlayingCutscene] = useState(false)
+  const [dialogueText, setDialogueText] = useState('')
+  const pipXRef = useRef(START_X)
+  const drawSceneRef = useRef(null)
+  const isCutsceneRunningRef = useRef(false)
   const [runState, setRunState] = useState('idle')
   const [errMsg,   setErrMsg]   = useState('')
   const [canvasH,  setCanvasH]  = useState(300)
@@ -279,9 +290,15 @@ export default function GameCanvas({ playToken, introToken = 0, onIntroComplete,
     setRunState('idle')
     setErrMsg('')
     setBubble(null)
+    setDialogueText('')
+    setIsPlayingCutscene(false)
+    pipXRef.current = START_X
+    isCutsceneRunningRef.current = false
     setRunMovedTiles(0)
     executionVersionRef.current += 1
     if (raf.current) cancelAnimationFrame(raf.current)
+    if (cutsceneRef.current) cancelAnimationFrame(cutsceneRef.current)
+    cutsceneRef.current = null
     if (idleRaf.current) cancelAnimationFrame(idleRaf.current)
     idleLoopRunning.current = false
     movementRunning.current = false
@@ -608,6 +625,8 @@ export default function GameCanvas({ playToken, introToken = 0, onIntroComplete,
     }
   }, [target, totalTiles, groundFraction, currentMap, initialPipPosition, isIdleLoaded, tileElevations])
 
+  drawSceneRef.current = drawScene
+
   /* Continuous idle "breathing" loop — runs whenever the character
      isn't mid-action, so idle never looks like a frozen screenshot.
      Stops automatically the instant a run/jump sequence starts. */
@@ -664,6 +683,97 @@ export default function GameCanvas({ playToken, introToken = 0, onIntroComplete,
     if (assetsReady) startIdleLoop()
     return () => stopIdleLoop()
   }, [assetsReady, startIdleLoop, stopIdleLoop])
+
+  useEffect(() => {
+    if (!replayToken || !assetsReady) return
+
+    if (cutsceneRef.current) cancelAnimationFrame(cutsceneRef.current)
+    cutsceneRef.current = null
+    isCutsceneRunningRef.current = true
+    movementRunning.current = true
+    stopIdleLoop()
+    setRunState('running')
+    setBubble(null)
+    setDialogueText('')
+    setBubbleOpacity(1)
+    setIsPlayingCutscene(true)
+    setPipX(START_X)
+
+    let previousTime = null
+    let animationClock = 0
+    const ctx = cvs.current?.getContext('2d')
+    if (!ctx) return undefined
+
+    const toTilePosition = x => {
+      const width = Math.max(1, ctx.canvas.width)
+      return (x / width) * Math.max(1, totalTiles)
+    }
+
+    const updateCutscenePosition = x => {
+      const tilePosition = toTilePosition(x)
+      pipXRef.current = x
+      setPipX(x)
+      lastPipX.current = tilePosition
+      currentTileRef.current = tilePosition
+      setTileProgress(Math.round(tilePosition))
+      drawSceneRef.current?.(
+        ctx,
+        tilePosition,
+        Math.sin(animationClock / 1000 * Math.PI * 4) * 2.5,
+        false,
+        'walk',
+        0,
+        animationClock,
+        1
+      )
+
+      if (x >= PROXIMITY_THRESHOLD) {
+        setDialogueText(GOLEM_DIALOGUE)
+        setBubbleX(Math.min(94, Math.max(6, (x / Math.max(1, canvasW)) * 100)))
+        const feetY = Number.isFinite(groundLineRef.current)
+          ? groundLineRef.current
+          : canvasH * 0.72 - 26
+        const bubbleTop = ((feetY - PIP_RENDER_HEIGHT - 8) / Math.max(1, canvasH)) * 100
+        setBubbleY(Math.min(82, Math.max(8, bubbleTop)))
+      }
+    }
+
+    const runCutsceneLoop = time => {
+      if (!isCutsceneRunningRef.current) return
+      if (previousTime === null) previousTime = time
+      const elapsed = Math.min(50, time - previousTime)
+      previousTime = time
+      animationClock += elapsed
+      const nextX = Math.min(
+        GOLEM_STOP_X,
+        pipXRef.current + elapsed * 0.16
+      )
+      updateCutscenePosition(nextX)
+
+      if (pipXRef.current < GOLEM_STOP_X) {
+        cutsceneRef.current = requestAnimationFrame(runCutsceneLoop)
+        return
+      }
+
+      pipXRef.current = GOLEM_STOP_X
+      isCutsceneRunningRef.current = false
+      movementRunning.current = false
+      cutsceneRef.current = null
+      setIsPlayingCutscene(false)
+      drawSceneRef.current?.(ctx, toTilePosition(GOLEM_STOP_X), 0, false, 'idle', 0, animationClock, 1)
+      startIdleLoop()
+    }
+
+    updateCutscenePosition(START_X)
+    cutsceneRef.current = requestAnimationFrame(runCutsceneLoop)
+
+    return () => {
+      isCutsceneRunningRef.current = false
+      movementRunning.current = false
+      if (cutsceneRef.current) cancelAnimationFrame(cutsceneRef.current)
+      cutsceneRef.current = null
+    }
+  }, [replayToken, assetsReady, totalTiles, stopIdleLoop, startIdleLoop])
 
   useEffect(() => {
     if (!introToken || !assetsReady) return
@@ -764,7 +874,7 @@ export default function GameCanvas({ playToken, introToken = 0, onIntroComplete,
     movementRunning.current = true
     stopIdleLoop()
     pipAlphaRef.current = 1
-    setRunState('running'); setErrMsg(''); setBubble(null); setBubbleOpacity(1); setRunMovedTiles(0)
+    setRunState('running'); setErrMsg(''); setBubble(null); setDialogueText(''); setBubbleOpacity(1); setRunMovedTiles(0)
     // Guards every rAF/setTimeout callback below. Without this, clicking
     // Run again while a previous run's say() bubble timeout (or jump/land
     // rAF chain) was still pending let that stale callback keep firing
@@ -1040,7 +1150,7 @@ export default function GameCanvas({ playToken, introToken = 0, onIntroComplete,
         height={canvasHeight}
         style={{ display:'block', width:'100%', height:'100%', objectFit:'fill', imageRendering:'pixelated' }}
       />
-      {bubble && (
+      {(dialogueText || bubble) && (
         <div className="toast-pop" style={{
           position:'absolute', top:`${bubbleY}%`, left:`${bubbleX}%`, transform:'translate(-50%, -100%)', opacity:bubbleOpacity, transition:'opacity 600ms ease', pointerEvents:'none', zIndex:100, whiteSpace:'pre-wrap',
           background:'#fff', color:C.onyx,
@@ -1048,7 +1158,7 @@ export default function GameCanvas({ playToken, introToken = 0, onIntroComplete,
           boxShadow:'0 4px 14px rgba(15,23,42,.18)', maxWidth:220, width:'max-content',
           border:`1px solid ${C.onyx100}`, textAlign:'center'
         }}>
-          {bubble}
+          {dialogueText || bubble}
           <div style={{
             position:'absolute', bottom:-7, left:'50%', transform:'translateX(-50%)',
             width:0, height:0,
