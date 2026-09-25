@@ -2200,6 +2200,7 @@ const deathResolveRef = useRef(null)
     useCallback(() => {
       setPhase('guided')
       setCheck(null)
+      setCompleted(false)
 
       setLiveCode(
         starterCode

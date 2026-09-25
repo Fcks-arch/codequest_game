@@ -29,9 +29,11 @@ const DEFAULT_ASSETS = {
   characterRun:  '/assets/pip-running.png',
   characterJump: '/assets/pip-jumping.png',
   characterLand: '/assets/pip-landing.png',
-  background:    '/assets/landscapes/terrain1.png',
+  background:    '/assets/landscapes/terrain1.jpg',
   groundTile:    null,  // '/assets/tile.png'
   flagSprite:    null,  // '/assets/flag.png'
+  golemSprite:   '/assets/golem.png',
+  gateSprite:    '/assets/gate.png',
   bgMusic:       null,  // '/assets/music/theme.mp3'
   sfxJump:       null,
   sfxCorrect:    null,
@@ -97,10 +99,11 @@ const FRAME_DATA = {
   ],
 }
 // Frames advance roughly this many times per second while animating.
-const FPS = { characterIdle: 6, characterWalk: 8, characterRun: 14, characterJump: 10, characterLand: 14 }
-// The first five walking poses are the consistent sword-free gait. Playing
-// them forward and backward avoids the abrupt snap when the walk cycle loops.
-const WALK_FRAME_ORDER = [0, 1, 2, 3, 4, 3, 2, 1]
+const FPS = { characterIdle: 6, characterWalk: 15, characterRun: 14, characterJump: 10, characterLand: 14 }
+// Sheet layout constants for pip-walking.png.
+const WALK_SHEET_COLS = 6
+const WALK_SHEET_ROWS = 2
+const TOTAL_WALK_FRAMES = 12
 // The idle sheet contains nine horizontal poses. Keep the source order so
 // every supplied pose is shown once per idle cycle.
 const IDLE_FRAME_ORDER = [0, 1, 2, 3, 4, 5, 6, 7, 8]
@@ -178,12 +181,28 @@ const TERRAIN1_MAX_VISUAL_TILE = 9.25
 const PIP_RENDER_WIDTH = 58
 const PIP_RENDER_HEIGHT = 77
 const START_X = 50
-const GOLEM_STOP_X = 420
-const PROXIMITY_THRESHOLD = 380
+const WALK_SPEED = 1.2
+const WAYPOINT_TARGET_X = 620
 const GOLEM_DIALOGUE = 'Hello, Golem!'
+const GOLEM_FRAME_COUNT = 5
+const GOLEM_CORRECT_SNIPPET = 'System.out.println("Hello, Golem!");'
+const GOLEM_DORMANT = 'DORMANT'
+const GOLEM_WAKING = 'WAKING'
+const GOLEM_STANDING = 'STANDING'
+const LEVEL_TWO_CODE = 'int doorCode = 42;'
+const SHARED_START_FRACTION = 0.47
+const GATE_FRAME_COUNT = 5
+const GATE_MAX_OPEN_FRAME = 3
+const GATE_SCALE = 1.0
+const DEBUG_GATE = false
+const GATE_VIS = { x0: 0.052, y0: 0.193, x1: 0.980, y1: 0.775 }
+const GATE_TARGET = { x0: 0.822, y0: 0.141, x1: 1.0, y1: 0.655 }
+const GOLEM_GAP = -8
+const GOLEM_PILLAR_LEFT_FRAC = 0.82
 
 function getVisualTilePosition(tile, totalTiles, backgroundPath) {
-  if (!String(backgroundPath).endsWith('/terrain1.png')) return tile
+  const isTerrain1Map = String(backgroundPath).endsWith('/terrain1.png') || String(backgroundPath).endsWith('/terrain1.jpg')
+  if (!isTerrain1Map) return tile
 
   return Math.min(
     TERRAIN1_MAX_VISUAL_TILE,
@@ -215,8 +234,24 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
   const [bubbleOpacity, setBubbleOpacity] = useState(1)
   const [pipX, setPipX] = useState(START_X)
   const [isPlayingCutscene, setIsPlayingCutscene] = useState(false)
+  const [isCutscenePlaying, setIsCutscenePlaying] = useState(false)
+  const [isMoving, setIsMoving] = useState(false)
   const [dialogueText, setDialogueText] = useState('')
+  const [golemState, setGolemState] = useState(GOLEM_DORMANT)
+  const [isLevelComplete, setIsLevelComplete] = useState(false)
+  const [isGateOpen, setIsGateOpen] = useState(false)
+  const [isAnimating, setIsAnimating] = useState(false)
+  const [showSpeechBubble, setShowSpeechBubble] = useState(false)
   const pipXRef = useRef(START_X)
+  const walkFrameIndexRef = useRef(0)
+  const walkTickRef = useRef(0)
+  const golemWakeIntervalRef = useRef(null)
+  const golemFrameRef = useRef(0)
+  const golemAnimTimerRef = useRef(null)
+  const gateFrameRef = useRef(0)
+  const gateAnimTimerRef = useRef(null)
+  const golemWakeTimeoutRef = useRef(null)
+  const golemStateRef = useRef(GOLEM_DORMANT)
   const drawSceneRef = useRef(null)
   const isCutsceneRunningRef = useRef(false)
   const [runState, setRunState] = useState('idle')
@@ -229,10 +264,14 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
   const [runMovedTiles, setRunMovedTiles] = useState(0)
   const [currentMap, setCurrentMap] = useState(1) 
   const groundLineRef = useRef(0)
-  const bgPath = lessonData?.background_image || '/assets/landscapes/terrain1.png'
+  const bgRenderRectRef = useRef({ dx: 0, dy: 0, dw: 0, dh: 0 })
+  const golemGlowStartRef = useRef(0)
+  const isGateOpenRef = useRef(false)
+  const bgPath = lessonData?.background_image || '/assets/landscapes/terrain1.jpg'
   const totalTiles = Number(lessonData?.total_tiles) || DEFAULT_TILE_COUNT
   const lessonGroundFraction = Number(lessonData?.ground_fraction)
-  const groundFraction = bgPath.endsWith('/terrain1.png')
+  const isTerrain1Background = bgPath.endsWith('/terrain1.png') || bgPath.endsWith('/terrain1.jpg')
+  const groundFraction = isTerrain1Background
     ? TERRAIN1_BRIDGE_FRACTION
     : lessonGroundFraction || BG_GRASS_FRACTION
   const config = typeof lessonData?.mechanics_config === 'string'
@@ -240,6 +279,14 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
     : lessonData?.mechanics_config
   const exitAction = config?.exit_action
   const tileElevations = config?.tile_elevations || {}
+  const currentLevel = Number(
+    lessonData?.order_index ||
+    lessonData?.level_number ||
+    String(lessonData?.level_label || '').match(/\d+/)?.[0]
+  )
+  const isLevelTwo = currentLevel === 2
+  const usesSharedStart = currentLevel === 1 || isLevelTwo
+  const sharedStartPosition = totalTiles * SHARED_START_FRACTION
   const executionVersionRef = useRef(0)
   const pipAlphaRef = useRef(1)
 
@@ -260,6 +307,266 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
       setIsIdleLoaded(true)
     }
   }, [])
+
+  const idleLoopRunning = useRef(false)
+  const movementRunning = useRef(false)
+  const lastPipX = useRef(0)
+  const currentTileRef = useRef(0)
+
+  function startIdleLoop() {
+    if (idleLoopRunning.current || movementRunning.current) return
+    idleLoopRunning.current = true
+    function frame(t) {
+      if (!idleLoopRunning.current) return
+      const ctx = cvs.current?.getContext('2d')
+      if (ctx) {
+        const bob = Math.sin(t / 500) * 3
+        drawScene(ctx, lastPipX.current, 0, false, 'idle', bob, t, pipAlphaRef.current)
+
+        if (onCharacterPosition && cvs.current) {
+          const rect = cvs.current.getBoundingClientRect()
+          const routeTiles = Math.max(1, totalTiles)
+          const posInMap = ((lastPipX.current % routeTiles) + routeTiles) % routeTiles
+          const tileWidth = rect.width / routeTiles
+          const visualTile = getVisualTilePosition(posInMap, routeTiles, bgPath)
+          const characterX = rect.left + visualTile * tileWidth + tileWidth / 2
+          const feetY = Number.isFinite(groundLineRef.current)
+            ? groundLineRef.current
+            : canvasH * 0.72 - 26
+          const characterY = rect.top + feetY - PIP_RENDER_HEIGHT / 2
+
+          onCharacterPosition({ x: characterX, y: characterY })
+        }
+      }
+      idleRaf.current = requestAnimationFrame(frame)
+    }
+    idleRaf.current = requestAnimationFrame(frame)
+  }
+
+  const stopIdleLoop = useCallback(() => {
+    idleLoopRunning.current = false
+    if (idleRaf.current) cancelAnimationFrame(idleRaf.current)
+  }, [])
+
+  const updateDialogueAnchor = useCallback(pipTile => {
+    const routeTiles = Math.max(1, totalTiles)
+    const localTile = ((Number(pipTile) % routeTiles) + routeTiles) % routeTiles
+    const tileWidth = canvasW / routeTiles
+    const visualTile = getVisualTilePosition(localTile, routeTiles, bgPath)
+    const pipCanvasX = visualTile * tileWidth
+    const groundY = Number.isFinite(groundLineRef.current)
+      ? groundLineRef.current
+      : canvasH * 0.72 - 26
+    const pipHeadY = groundY - PIP_RENDER_HEIGHT - 15
+
+    setBubbleX(Math.round(pipCanvasX))
+    setBubbleY(Math.round(pipHeadY))
+  }, [bgPath, canvasH, canvasW, totalTiles])
+
+  const triggerGolemWakeAnimation = useCallback(() => {
+    if (golemStateRef.current !== GOLEM_DORMANT) return
+    if (golemAnimTimerRef.current) {
+      clearInterval(golemAnimTimerRef.current)
+      golemAnimTimerRef.current = null
+    }
+    if (golemWakeTimeoutRef.current) {
+      clearTimeout(golemWakeTimeoutRef.current)
+      golemWakeTimeoutRef.current = null
+    }
+    if (golemWakeIntervalRef.current) {
+      clearInterval(golemWakeIntervalRef.current)
+      golemWakeIntervalRef.current = null
+    }
+
+    setIsAnimating(true)
+    setIsLevelComplete(true)
+    setShowSpeechBubble(true)
+    golemStateRef.current = GOLEM_WAKING
+    setGolemState(GOLEM_WAKING)
+    let currentFrame = 0
+    golemFrameRef.current = 0
+    console.log('[Golem] Wake-up animation sequence started')
+    golemAnimTimerRef.current = setInterval(() => {
+      currentFrame += 1
+      const nextFrame = Math.min(GOLEM_FRAME_COUNT - 1, currentFrame)
+      golemFrameRef.current = nextFrame
+      console.log(`[Golem Timer Tick] Updated golemFrameRef.current to: ${golemFrameRef.current}`)
+      if (cvs.current && drawSceneRef.current) {
+        const ctx = cvs.current.getContext('2d')
+        drawSceneRef.current(
+          ctx,
+          lastPipX.current,
+          0,
+          false,
+          'idle',
+          0,
+          performance.now(),
+          pipAlphaRef.current
+        )
+      }
+
+      if (nextFrame >= GOLEM_FRAME_COUNT - 1) {
+        clearInterval(golemAnimTimerRef.current)
+        golemAnimTimerRef.current = null
+        golemStateRef.current = GOLEM_STANDING
+        setGolemState(GOLEM_STANDING)
+        setIsAnimating(false)
+        console.log('[Golem] Animation complete - standing pose locked.')
+      }
+    }, 150)
+  }, [])
+
+  const playCompletionSequence = useCallback(() => {
+    updateDialogueAnchor(lastPipX.current)
+    setIsLevelComplete(true)
+    setShowSpeechBubble(true)
+    if (golemWakeTimeoutRef.current) {
+      clearTimeout(golemWakeTimeoutRef.current)
+    }
+    golemWakeTimeoutRef.current = setTimeout(() => {
+      golemWakeTimeoutRef.current = null
+      triggerGolemWakeAnimation()
+    }, 400)
+  }, [triggerGolemWakeAnimation, updateDialogueAnchor])
+
+  const startGateOpening = useCallback(() => {
+    if (gateAnimTimerRef.current) {
+      clearInterval(gateAnimTimerRef.current)
+    }
+    gateFrameRef.current = 0
+    gateAnimTimerRef.current = setInterval(() => {
+      gateFrameRef.current = Math.min(GATE_MAX_OPEN_FRAME, gateFrameRef.current + 1)
+      if (gateFrameRef.current >= GATE_MAX_OPEN_FRAME) {
+        clearInterval(gateAnimTimerRef.current)
+        gateAnimTimerRef.current = null
+      }
+    }, 150)
+  }, [])
+
+  function runGuidedWalk() {
+    const toTilePosition = x => (x / Math.max(1, canvasW)) * Math.max(1, totalTiles)
+    const startX = usesSharedStart ? sharedStartPosition : START_X
+    const targetX = usesSharedStart
+      ? startX
+      : Math.max(START_X, Math.min(canvasW * 0.48, canvasW - 120))
+
+    pipXRef.current = startX
+    walkFrameIndexRef.current = 0
+    walkTickRef.current = 0
+    setPipX(startX)
+    setIsMoving(true)
+    setIsCutscenePlaying(true)
+    setIsPlayingCutscene(true)
+    movementRunning.current = true
+    stopIdleLoop()
+
+    if (cutsceneRef.current) {
+      cancelAnimationFrame(cutsceneRef.current)
+    }
+
+    const ctx = cvs.current?.getContext('2d')
+    if (usesSharedStart) {
+      setIsMoving(false)
+      setIsCutscenePlaying(false)
+      setIsPlayingCutscene(false)
+      movementRunning.current = false
+      pipXRef.current = startX
+      lastPipX.current = startX
+      currentTileRef.current = startX
+      setPipX(startX)
+      if (ctx && drawSceneRef.current) {
+        drawSceneRef.current(ctx, startX, 0, false, 'idle', 0, 0, 1)
+      }
+      startIdleLoop()
+      return
+    }
+    const step = () => {
+      if (pipXRef.current < targetX) {
+        pipXRef.current += WALK_SPEED
+        const clampedX = Math.min(pipXRef.current, targetX)
+        pipXRef.current = clampedX
+        setPipX(clampedX)
+        lastPipX.current = clampedX
+        currentTileRef.current = clampedX
+        walkTickRef.current += 1
+        if (walkTickRef.current % 6 === 0) {
+          walkFrameIndexRef.current = (walkFrameIndexRef.current + 1) % TOTAL_WALK_FRAMES
+        }
+        if (ctx && drawSceneRef.current) {
+          const routeTiles = Math.max(1, totalTiles)
+          const tilePos = Math.max(0, Math.min(routeTiles, toTilePosition(clampedX)))
+          drawSceneRef.current(ctx, tilePos, Math.sin(walkTickRef.current / 8) * 2.2, false, 'walk', 0, 0, 1)
+        }
+        cutsceneRef.current = requestAnimationFrame(step)
+        return
+      }
+
+      pipXRef.current = targetX
+      setPipX(targetX)
+      setIsMoving(false)
+      setIsCutscenePlaying(false)
+      setIsPlayingCutscene(false)
+      movementRunning.current = false
+      walkFrameIndexRef.current = 0
+      if (ctx && drawSceneRef.current) {
+        lastPipX.current = toTilePosition(targetX)
+        currentTileRef.current = lastPipX.current
+        drawSceneRef.current(ctx, lastPipX.current, 0, false, 'idle', 0, 0, 1)
+      }
+      cutsceneRef.current = null
+      startIdleLoop()
+    }
+
+    cutsceneRef.current = requestAnimationFrame(step)
+  }
+
+  function triggerCleanReset() {
+    if (golemWakeTimeoutRef.current) {
+      clearTimeout(golemWakeTimeoutRef.current)
+      golemWakeTimeoutRef.current = null
+    }
+    if (golemWakeIntervalRef.current) {
+      clearInterval(golemWakeIntervalRef.current)
+      golemWakeIntervalRef.current = null
+    }
+    if (golemAnimTimerRef.current) {
+      clearInterval(golemAnimTimerRef.current)
+      golemAnimTimerRef.current = null
+    }
+    if (gateAnimTimerRef.current) {
+      clearInterval(gateAnimTimerRef.current)
+      gateAnimTimerRef.current = null
+    }
+    if (cutsceneRef.current) cancelAnimationFrame(cutsceneRef.current)
+    cutsceneRef.current = null
+    isCutsceneRunningRef.current = false
+    movementRunning.current = false
+
+    setIsLevelComplete(false)
+    isGateOpenRef.current = false
+    setIsGateOpen(false)
+    gateFrameRef.current = 0
+    setIsMoving(true)
+    setIsCutscenePlaying(true)
+    setShowSpeechBubble(false)
+    golemStateRef.current = isLevelTwo ? GOLEM_STANDING : GOLEM_DORMANT
+    setGolemState(isLevelTwo ? GOLEM_STANDING : GOLEM_DORMANT)
+    golemFrameRef.current = isLevelTwo ? GOLEM_FRAME_COUNT - 1 : 0
+    setIsAnimating(false)
+    setDialogueText('')
+    setBubble(null)
+    setBubbleOpacity(1)
+    setRunState('idle')
+    lastPipX.current = usesSharedStart ? sharedStartPosition : 0
+    currentTileRef.current = usesSharedStart ? sharedStartPosition : 0
+    walkFrameIndexRef.current = 0
+    walkTickRef.current = 0
+    runGuidedWalk()
+  }
+
+  function handleResetLevel() {
+    triggerCleanReset()
+  }
   
 
   const getMapForPosition = (pipX) => {
@@ -283,35 +590,55 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
     // BOTH the idle loop and every run actually draw/animate from — without
     // syncing it here, Pip visually teleported back to tile 0 whenever a
     // lesson (re)mounted even though tileProgress knew the saved position.
-    lastPipX.current = initialPipPosition || 0
-    currentTileRef.current = initialPipPosition || 0
+    const spawnPosition = usesSharedStart ? sharedStartPosition : (initialPipPosition || 0)
+    pipXRef.current = spawnPosition
+    lastPipX.current = spawnPosition
+    currentTileRef.current = spawnPosition
     pipAlphaRef.current = 1
-    setTileProgress(initialPipPosition || 0)
+    setPipX(spawnPosition)
+    setTileProgress(spawnPosition)
     setRunState('idle')
     setErrMsg('')
     setBubble(null)
     setDialogueText('')
     setIsPlayingCutscene(false)
-    pipXRef.current = START_X
-    isCutsceneRunningRef.current = false
+    setIsCutscenePlaying(false)
+    setIsMoving(false)
+    golemStateRef.current = isLevelTwo ? GOLEM_STANDING : GOLEM_DORMANT
+    setGolemState(isLevelTwo ? GOLEM_STANDING : GOLEM_DORMANT)
+    golemFrameRef.current = isLevelTwo ? GOLEM_FRAME_COUNT - 1 : 0
+    setIsLevelComplete(false)
+    isGateOpenRef.current = false
+    setIsGateOpen(false)
+    setIsAnimating(false)
+    setShowSpeechBubble(false)
+    if (golemWakeIntervalRef.current) {
+      clearInterval(golemWakeIntervalRef.current)
+      golemWakeIntervalRef.current = null
+    }
+    if (golemAnimTimerRef.current) {
+      clearInterval(golemAnimTimerRef.current)
+      golemAnimTimerRef.current = null
+    }
+    if (gateAnimTimerRef.current) {
+      clearInterval(gateAnimTimerRef.current)
+      gateAnimTimerRef.current = null
+    }
     setRunMovedTiles(0)
     executionVersionRef.current += 1
     if (raf.current) cancelAnimationFrame(raf.current)
-    if (cutsceneRef.current) cancelAnimationFrame(cutsceneRef.current)
-    cutsceneRef.current = null
     if (idleRaf.current) cancelAnimationFrame(idleRaf.current)
     idleLoopRunning.current = false
-    movementRunning.current = false
-    if (assetsReady) startIdleLoop()
+    triggerCleanReset()
     const key = `${lessonId}:${target}`
     if (runKey.current !== key) {
       runKey.current = key
       // Start on the map containing Pip's saved absolute position. When a
       // position is exactly at a map boundary, this selects the new map so
       // its local position begins at zero on the left edge.
-      setCurrentMap(getMapForPosition(initialPipPosition || 0))
+      setCurrentMap(getMapForPosition(spawnPosition))
     }
-  }, [lessonId, target, resetToken])
+  }, [lessonId, target, resetToken, replayToken, assetsReady, isLevelTwo])
 
   /* Canvas height was already tracking the container's real size, but
      width was hardcoded to 1280 regardless of how wide the container
@@ -382,7 +709,34 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
     return () => { cancelled = true }
   }, [ASSETS.background, currentMap])
 
-  const drawScene = useCallback((ctx, px, bounce, flagHit, pose, idleBob, animMs = 0, characterAlpha = 1, characterFeetY = null) => {
+  function getGateRect(gateImg) {
+  if (!gateImg || gateImg.naturalWidth <= 0 || gateImg.naturalHeight <= 0) return null
+
+  const frameWidth = gateImg.naturalWidth / GATE_FRAME_COUNT
+  const frameHeight = gateImg.naturalHeight
+  const { dx, dy, dw, dh } = bgRenderRectRef.current
+
+  // Same crop rectangle every frame — the art's position inside each
+  // source frame drifts slightly as the door opens, so a fixed crop is
+  // what keeps the arch pinned instead of sliding.
+  const srcX0 = GATE_VIS.x0 * frameWidth
+  const srcY0 = GATE_VIS.y0 * frameHeight
+  const srcW  = (GATE_VIS.x1 - GATE_VIS.x0) * frameWidth
+  const srcH  = (GATE_VIS.y1 - GATE_VIS.y0) * frameHeight
+
+  const targetHeight = dh * (GATE_TARGET.y1 - GATE_TARGET.y0)
+  const scale = (targetHeight / srcH) * GATE_SCALE
+  const destW = srcW * scale
+  const destH = srcH * scale
+  const destRight = dx + dw * GATE_TARGET.x1
+  const destBottom = dy + dh * GATE_TARGET.y1
+  const destX = Math.round(destRight - destW)
+  const destY = Math.round(destBottom - destH)
+
+  return { frameWidth, srcX0, srcY0, srcW, srcH, destX, destY, destW, destH, visibleLeftX: destX }
+}
+
+  function drawScene(ctx, px, bounce, flagHit, pose, idleBob, animMs = 0, characterAlpha = 1, characterFeetY = null) {
     const W = ctx.canvas.width
     const H = ctx.canvas.height
     const renderAlpha = Math.max(0, Math.min(1, characterAlpha))
@@ -397,14 +751,8 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
       return feetLine + (Number.isFinite(elevation) ? elevation : 0)
     }
 
-    // Pip carries his absolute position across levels, but each lesson's
-    // target_tiles counts from where he STARTED that lesson. The flag (and
-    // the win check) therefore sit at offset + target, not at `target`,
-    // otherwise any carried-over progress would already count as finished.
-    const baseOffset = initialPipPosition || 0
+    const baseOffset = usesSharedStart ? sharedStartPosition : (initialPipPosition || 0)
     const goalX = baseOffset + target
-    
-    // Determine which map we're on based on absolute position
     const mapNum = getMapForPosition(px)
     const posInMap = ((px % routeTiles) + routeTiles) % routeTiles
     const visualTile = getVisualTilePosition(posInMap, routeTiles, bgPath)
@@ -412,23 +760,16 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
     if (imgs.current.background) {
       const bg = imgs.current.background
       ctx.imageSmoothingEnabled = false
-
-      // Show the complete map. The previous cover-style scale enlarged the
-      // artwork beyond both canvas edges, so only a cropped half of a map was
-      // visible. Letterbox the image when its aspect ratio differs from the
-      // game area instead of hiding map content.
       const s = Math.min(W / bg.naturalWidth, H / bg.naturalHeight)
       const dw = bg.naturalWidth * s
       const dh = bg.naturalHeight * s
       const dx = (W - dw) / 2
       const dy = (H - dh) / 2
+      bgRenderRectRef.current = { dx, dy, dw, dh }
 
       ctx.fillStyle = '#17233B'
       ctx.fillRect(0, 0, W, H)
       ctx.drawImage(bg, dx, dy, dw, dh)
-      // The playable grass strip is part of the map artwork. Anchor Pip to
-      // that source-image row after the image has been fitted to the canvas;
-      // a viewport percentage leaves him visibly floating above the ground.
       feetLine = dy + groundFraction * dh
       ctx.imageSmoothingEnabled = true
     } else {
@@ -452,10 +793,6 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
     }
     groundLineRef.current = feetLine
 
-    // ── Ground strip ── only for the placeholder look. The real
-    // background art paints its own grass/dirt ground (aligned to
-    // feetLine above), so a second, flat ground drawn on top of it
-    // here would just cover it back up.
     if (!imgs.current.background) {
       ctx.fillStyle = C.purple
       ctx.fillRect(0, GY + 2, W, H - GY - 2)
@@ -475,13 +812,11 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
       }
     }
 
-    // ── Flag ──
-    // Position flag relative to current map view
     const configuredFlagTile = Number(lessonData?.flag_tile)
-    const flagTile = Math.max(0, Math.min(
-      routeTiles - 1,
-      Number.isFinite(configuredFlagTile) ? configuredFlagTile : Math.ceil((initialPipPosition || 0) + target)
-    ))
+    const configuredOrDefaultFlag = usesSharedStart
+      ? sharedStartPosition
+      : (Number.isFinite(configuredFlagTile) ? configuredFlagTile : Math.ceil((initialPipPosition || 0) + target))
+    const flagTile = Math.max(0, Math.min(routeTiles - 1, configuredOrDefaultFlag))
     const fx = getVisualTilePosition(flagTile, routeTiles, bgPath) * tileWidth
     const flagH = TILE * 0.62
     const flagW = TILE * 0.22
@@ -499,12 +834,93 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
       ctx.closePath(); ctx.fill()
     }
 
-    // ══════════════════════════════════════════════════════════
-    // CHARACTER — always drawn LAST in this function, on every
-    // single call, guaranteed. This is what prevents the "behind
-    // the platform" bug: there is no code path that draws the
-    // ground/flag after this point.
-    // ══════════════════════════════════════════════════════════
+    const gateImg = imgs.current.gateSprite
+    if (gateImg && gateImg.complete && gateImg.naturalWidth > 0 && gateImg.naturalHeight > 0) {
+      const gateRect = getGateRect(gateImg)
+      const safeFrame = Math.min(Math.max(gateFrameRef.current, 0), GATE_MAX_OPEN_FRAME)
+      if (!gateRect) return
+
+      ctx.save()
+      ctx.imageSmoothingEnabled = false
+     ctx.drawImage(
+      gateImg,
+      Math.round(safeFrame * gateRect.frameWidth + gateRect.srcX0),
+      Math.round(gateRect.srcY0),
+      Math.round(gateRect.srcW),
+      Math.round(gateRect.srcH),
+      gateRect.destX,
+      gateRect.destY,
+      Math.round(gateRect.destW),
+      Math.round(gateRect.destH)
+      )
+      if (DEBUG_GATE) {
+  ctx.strokeStyle = '#00f0ff'
+  ctx.lineWidth = 2
+  ctx.strokeRect(gateRect.destX, gateRect.destY, gateRect.destW, gateRect.destH)
+}
+      ctx.imageSmoothingEnabled = true
+      ctx.restore()
+    }
+
+    const golemImg = imgs.current.golemSprite
+    if (golemImg && golemImg.naturalWidth > 0 && golemImg.naturalHeight > 0) {
+      const BRIDGE_GROUND_Y = H * 0.745
+      const GOLEM_GROUND_X = W * 0.82
+      const frameWidth = golemImg.naturalWidth / GOLEM_FRAME_COUNT
+      const frameHeight = golemImg.naturalHeight
+      const aspectRatio = frameWidth / frameHeight
+      const renderedHeight = H * 0.48
+      const renderedWidth = renderedHeight * aspectRatio
+      const gateRect = getGateRect(imgs.current.gateSprite)
+      const gateRelativeDrawX = gateRect
+        ? gateRect.visibleLeftX - GOLEM_GAP - renderedWidth
+        : GOLEM_GROUND_X - (renderedWidth / 2)
+      const pillarSafeDrawX = W * GOLEM_PILLAR_LEFT_FRAC - renderedWidth
+      const drawX = Math.round(Math.min(gateRelativeDrawX, pillarSafeDrawX))
+      const drawY = Math.round(BRIDGE_GROUND_Y - renderedHeight)
+      const currentFrame = Math.max(0, Math.min(GOLEM_FRAME_COUNT - 1, golemFrameRef.current))
+      const sourceX = Math.round(currentFrame * frameWidth)
+      
+
+      ctx.imageSmoothingEnabled = false
+      ctx.drawImage(
+        golemImg,
+        sourceX,
+        0,
+        frameWidth,
+        frameHeight,
+        drawX,
+        drawY,
+        renderedWidth,
+        renderedHeight
+      )
+      const glowAge = performance.now() - golemGlowStartRef.current
+      if (isLevelTwo && isGateOpenRef.current && glowAge >= 0) {
+        const pulse = 0.52 + Math.sin(glowAge / 90) * 0.28
+        const runeX = drawX + renderedWidth * 0.5
+        const runeY = drawY + renderedHeight * 0.42
+        const glowWidth = Math.max(8, renderedWidth * 0.16)
+        const glowHeight = Math.max(8, renderedHeight * 0.1)
+        const glow = ctx.createRadialGradient(
+          runeX,
+          runeY,
+          1,
+          runeX,
+          runeY,
+          glowWidth
+        )
+        glow.addColorStop(0, `rgba(0, 240, 255, ${Math.max(0.08, pulse * 0.5)})`)
+        glow.addColorStop(1, 'rgba(0, 240, 255, 0)')
+        ctx.save()
+        ctx.fillStyle = glow
+        ctx.shadowColor = '#00f0ff'
+        ctx.shadowBlur = 15
+        ctx.fillRect(runeX - glowWidth, runeY - glowHeight, glowWidth * 2, glowHeight * 2)
+        ctx.restore()
+      }
+      ctx.imageSmoothingEnabled = true
+    }
+
     const CW = PIP_RENDER_WIDTH
     const movementRenderHeight = PIP_RENDER_HEIGHT
     const totalBob = bounce + idleBob
@@ -526,13 +942,46 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
     let spriteDrawn = false
     if (poseImg && frames && frames.length) {
       try {
-        // Pixel-art poses need clean frame boundaries. Blending adjacent
-        // transparent sprite crops makes the character look smeared and can
-        // hide the leg movement, especially during a short walk.
         const rawPos = Math.max(0, animMs) / 1000 * FPS[poseKey]
         const i0 = Math.floor(rawPos)
+        const isWalk = poseKey === 'characterWalk'
+        if (isWalk) {
+          const sheetWidth = poseImg.naturalWidth || poseImg.width
+          const sheetHeight = poseImg.naturalHeight || poseImg.height
+          const frameWidth = Math.floor(sheetWidth / WALK_SHEET_COLS)
+          const frameHeight = Math.floor(sheetHeight / WALK_SHEET_ROWS)
+          const currentPipFrame = walkFrameIndexRef.current % TOTAL_WALK_FRAMES
+          const col = currentPipFrame % WALK_SHEET_COLS
+          const row = Math.floor(currentPipFrame / WALK_SHEET_COLS)
+          const boundedSourceX = col * frameWidth
+          const boundedSourceY = row * frameHeight
+          const drawHeight = movementRenderHeight
+          const drawWidth = drawHeight * (frameWidth / frameHeight)
+          const drawX = Math.round(CX + (CW - drawWidth) / 2)
+          const drawY = Math.round(CY_base - drawHeight)
+
+          if (![frameWidth, frameHeight, drawWidth, drawX, drawY, boundedSourceX, boundedSourceY].every(Number.isFinite) ||
+              frameWidth <= 0 || frameHeight <= 0 ||
+              boundedSourceX + frameWidth > sheetWidth || boundedSourceY + frameHeight > sheetHeight) {
+            throw new Error('Invalid walk sprite grid dimensions.')
+          }
+
+          ctx.imageSmoothingEnabled = false
+          ctx.globalAlpha = renderAlpha
+          ctx.drawImage(
+            poseImg,
+            boundedSourceX, boundedSourceY, frameWidth, frameHeight,
+            drawX, drawY, drawWidth, drawHeight
+          )
+          ctx.globalAlpha = 1
+          ctx.imageSmoothingEnabled = true
+          spriteDrawn = true
+        }
+
+        if (isWalk) return
+
         const frameOrder = poseKey === 'characterIdle' ? IDLE_FRAME_ORDER
-              : poseKey === 'characterWalk' ? WALK_FRAME_ORDER : null
+              : null
         const frameIndex = frameOrder ? frameOrder[i0 % frameOrder.length] : i0
         const idxA = ((frameIndex % frames.length) + frames.length) % frames.length
         const currentFrame = frames[idxA]
@@ -544,12 +993,7 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
         const isIdle = poseKey === 'characterIdle'
         const spriteScale = PIP_RENDER_HEIGHT / (poseKey === 'characterRun' ? RUN_FRAME_BOX.h : currentFrame.h)
         const drawFrame = (animFrame, alpha) => {
-          // Scale by the shared factor, not this frame's own aspect ratio,
-          // so width and height both track the real pose instead of
-          // height being force-stretched to hit a fixed width.
           if (isIdle) {
-            // The replacement sheet has uneven padding, so use its measured
-            // tight pose box instead of dividing the full image into cells.
             const sourceX = animFrame.x
             const sourceY = animFrame.y
             const cropWidth = animFrame.w
@@ -563,10 +1007,6 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
             const rawDestY = CY_base - dHeight
             const destX = Number.isFinite(rawDestX) ? rawDestX : 0
             const destY = Number.isFinite(rawDestY) ? rawDestY : feetLine - PIP_RENDER_HEIGHT
-            if (!idleDrawDebugLogged) {
-              console.log('Drawing Pip at:', { destX, destY, isComplete: idleImageRef.current?.complete })
-              idleDrawDebugLogged = true
-            }
             ctx.globalAlpha = alpha
             ctx.drawImage(
               poseImg,
@@ -586,24 +1026,17 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
           ctx.drawImage(poseImg, animFrame.x, animFrame.y, animFrame.w, animFrame.h, drawX, drawY, fw, fh)
           ctx.globalAlpha = 1
         }
-        ctx.imageSmoothingEnabled = false // keep pixel art crisp, not blurry
+        ctx.imageSmoothingEnabled = false
         drawFrame(frames[idxA], renderAlpha)
         ctx.globalAlpha = 1
         ctx.imageSmoothingEnabled = true
         spriteDrawn = true
       } catch (e) {
-        // Never let a bad frame take down the whole animation queue —
-        // degrade to the placeholder below instead of freezing Pip
-        // mid-pose for the rest of the run.
         console.error('Sprite frame draw failed, using placeholder:', e)
       }
     }
     if (!spriteDrawn) {
-      // Do not replace Pip with the green placeholder while idle art is
-      // loading or unavailable. The cleared scene is preferable to showing
-      // an unrelated character graphic that looks like a real game state.
       if (pose === 'idle') return
-      // Built-in placeholder while art isn't wired up yet
       ctx.globalAlpha = renderAlpha
       const CH = CW * 1.1
       ctx.fillStyle = 'rgba(15,23,42,0.14)'
@@ -623,160 +1056,35 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
       ctx.fillRect(CX - CW*0.04, CY_base - CH + CH * 0.18, CW * 1.08, CH * 0.1)
       ctx.globalAlpha = 1
     }
-  }, [target, totalTiles, groundFraction, currentMap, initialPipPosition, isIdleLoaded, tileElevations])
+  }
 
   drawSceneRef.current = drawScene
-
-  /* Continuous idle "breathing" loop — runs whenever the character
-     isn't mid-action, so idle never looks like a frozen screenshot.
-     Stops automatically the instant a run/jump sequence starts. */
-  const idleLoopRunning = useRef(false)
-  const movementRunning = useRef(false)
-  const lastPipX = useRef(0)
-  const currentTileRef = useRef(0)
-
-  const startIdleLoop = useCallback(() => {
-    if (idleLoopRunning.current || movementRunning.current) return
-    idleLoopRunning.current = true
-    function frame(t) {
-      if (!idleLoopRunning.current) return
-      const ctx = cvs.current?.getContext('2d')
-      if (ctx) {
-        const bob = Math.sin(t / 500) * 3 // gentle 3px sway, ~1 cycle/sec
-        drawScene(ctx, lastPipX.current, 0, false, 'idle', bob, t, pipAlphaRef.current)
-
-        if (onCharacterPosition && cvs.current) {
-          const rect = cvs.current.getBoundingClientRect()
-          const routeTiles = Math.max(1, totalTiles)
-          const posInMap = ((lastPipX.current % routeTiles) + routeTiles) % routeTiles
-          const tileWidth = rect.width / routeTiles
-          const visualTile = getVisualTilePosition(posInMap, routeTiles, bgPath)
-          const characterX = rect.left + visualTile * tileWidth + tileWidth / 2
-          const feetY = Number.isFinite(groundLineRef.current)
-            ? groundLineRef.current
-            : canvasH * 0.72 - 26
-          const characterY = rect.top + feetY - PIP_RENDER_HEIGHT / 2
-
-          onCharacterPosition({
-            x: characterX,
-            y: characterY
-          })
-        }
-      }
-      idleRaf.current = requestAnimationFrame(frame)
-    }
-    idleRaf.current = requestAnimationFrame(frame)
-  }, [
-    canvasH,
-    drawScene,
-    onCharacterPosition,
-    totalTiles
-  ])
-
-  const stopIdleLoop = useCallback(() => {
-    idleLoopRunning.current = false
-    if (idleRaf.current) cancelAnimationFrame(idleRaf.current)
-  }, [])
 
   // Start idle loop once assets are ready; keep it running whenever idle
   useEffect(() => {
     if (assetsReady) startIdleLoop()
     return () => stopIdleLoop()
-  }, [assetsReady, startIdleLoop, stopIdleLoop])
-
-  useEffect(() => {
-    if (!replayToken || !assetsReady) return
-
-    if (cutsceneRef.current) cancelAnimationFrame(cutsceneRef.current)
-    cutsceneRef.current = null
-    isCutsceneRunningRef.current = true
-    movementRunning.current = true
-    stopIdleLoop()
-    setRunState('running')
-    setBubble(null)
-    setDialogueText('')
-    setBubbleOpacity(1)
-    setIsPlayingCutscene(true)
-    setPipX(START_X)
-
-    let previousTime = null
-    let animationClock = 0
-    const ctx = cvs.current?.getContext('2d')
-    if (!ctx) return undefined
-
-    const toTilePosition = x => {
-      const width = Math.max(1, ctx.canvas.width)
-      return (x / width) * Math.max(1, totalTiles)
-    }
-
-    const updateCutscenePosition = x => {
-      const tilePosition = toTilePosition(x)
-      pipXRef.current = x
-      setPipX(x)
-      lastPipX.current = tilePosition
-      currentTileRef.current = tilePosition
-      setTileProgress(Math.round(tilePosition))
-      drawSceneRef.current?.(
-        ctx,
-        tilePosition,
-        Math.sin(animationClock / 1000 * Math.PI * 4) * 2.5,
-        false,
-        'walk',
-        0,
-        animationClock,
-        1
-      )
-
-      if (x >= PROXIMITY_THRESHOLD) {
-        setDialogueText(GOLEM_DIALOGUE)
-        setBubbleX(Math.min(94, Math.max(6, (x / Math.max(1, canvasW)) * 100)))
-        const feetY = Number.isFinite(groundLineRef.current)
-          ? groundLineRef.current
-          : canvasH * 0.72 - 26
-        const bubbleTop = ((feetY - PIP_RENDER_HEIGHT - 8) / Math.max(1, canvasH)) * 100
-        setBubbleY(Math.min(82, Math.max(8, bubbleTop)))
-      }
-    }
-
-    const runCutsceneLoop = time => {
-      if (!isCutsceneRunningRef.current) return
-      if (previousTime === null) previousTime = time
-      const elapsed = Math.min(50, time - previousTime)
-      previousTime = time
-      animationClock += elapsed
-      const nextX = Math.min(
-        GOLEM_STOP_X,
-        pipXRef.current + elapsed * 0.16
-      )
-      updateCutscenePosition(nextX)
-
-      if (pipXRef.current < GOLEM_STOP_X) {
-        cutsceneRef.current = requestAnimationFrame(runCutsceneLoop)
-        return
-      }
-
-      pipXRef.current = GOLEM_STOP_X
-      isCutsceneRunningRef.current = false
-      movementRunning.current = false
-      cutsceneRef.current = null
-      setIsPlayingCutscene(false)
-      drawSceneRef.current?.(ctx, toTilePosition(GOLEM_STOP_X), 0, false, 'idle', 0, animationClock, 1)
-      startIdleLoop()
-    }
-
-    updateCutscenePosition(START_X)
-    cutsceneRef.current = requestAnimationFrame(runCutsceneLoop)
-
-    return () => {
-      isCutsceneRunningRef.current = false
-      movementRunning.current = false
-      if (cutsceneRef.current) cancelAnimationFrame(cutsceneRef.current)
-      cutsceneRef.current = null
-    }
-  }, [replayToken, assetsReady, totalTiles, stopIdleLoop, startIdleLoop])
+  }, [assetsReady, stopIdleLoop])
 
   useEffect(() => {
     if (!introToken || !assetsReady) return
+
+    if (usesSharedStart) {
+      pipXRef.current = sharedStartPosition
+      lastPipX.current = sharedStartPosition
+      currentTileRef.current = sharedStartPosition
+      pipAlphaRef.current = 1
+      setPipX(sharedStartPosition)
+      setTileProgress(Math.round(sharedStartPosition))
+      setIsMoving(false)
+      setIsCutscenePlaying(false)
+      setIsPlayingCutscene(false)
+      golemStateRef.current = isLevelTwo ? GOLEM_STANDING : GOLEM_DORMANT
+      setGolemState(isLevelTwo ? GOLEM_STANDING : GOLEM_DORMANT)
+      golemFrameRef.current = isLevelTwo ? GOLEM_FRAME_COUNT - 1 : 0
+      onIntroComplete?.()
+      return
+    }
 
     movementRunning.current = true
     stopIdleLoop()
@@ -867,7 +1175,7 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
       movementRunning.current = false
       if (raf.current) cancelAnimationFrame(raf.current)
     }
-  }, [introToken, assetsReady]) // eslint-disable-line
+  }, [introToken, assetsReady, usesSharedStart, isLevelTwo, sharedStartPosition]) // eslint-disable-line
 
   useEffect(() => {
     if (playToken === 0) return
@@ -886,7 +1194,25 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
     const executionVersion = executionVersionRef.current
     let events = []
     let executionFinished = false
-    runCodeInWorker(code, lessonId, undefined, executionMode).then(res => {
+    const isLocalGolemSuccess = executionMode === 'guided' &&
+      String(code || '').trim() === GOLEM_CORRECT_SNIPPET
+    const normalizedCode = String(code || '').replace(/\s+/g, ' ').trim()
+    const isLocalLevelTwoSuccess = isLevelTwo && normalizedCode === LEVEL_TWO_CODE
+
+    if (isLocalGolemSuccess) {
+      executionFinished = true
+      movementRunning.current = false
+      setRunState('success')
+      playCompletionSequence()
+      onResult && onResult({
+        events: [{ type: 'say', text: GOLEM_DIALOGUE }],
+        code,
+        error: null,
+        finalX: lastPipX.current
+      })
+      startIdleLoop()
+    } else if (!isLocalLevelTwoSuccess) {
+      runCodeInWorker(code, lessonId, undefined, executionMode).then(res => {
       if (cancelled || executionVersion !== executionVersionRef.current) return
       executionFinished = true
       events = (res.events || []).slice(Math.max(0, eventOffset))
@@ -909,7 +1235,8 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
       return
       }
       step()
-    })
+      })
+    }
     let pipX = lastPipX.current || 0, i = 0
     let animationClock = 0
     let previousTime = null
@@ -944,16 +1271,86 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
     const ctx = cvs.current.getContext('2d')
     reportProgress(pipX)
 
+    if (isLocalLevelTwoSuccess) {
+      executionFinished = true
+      setBubble('doorCode: 42')
+      setDialogueText('')
+      setBubbleOpacity(1)
+      updateDialogueAnchor(pipX)
+      golemGlowStartRef.current = performance.now()
+      isGateOpenRef.current = true
+      setIsGateOpen(true)
+      startGateOpening()
+      const startTile = pipX
+      const gateTile = totalTiles * 0.91
+      const walkStart = performance.now()
+      const walkDuration = 2200
+
+      const animateToGate = now => {
+        if (cancelled || executionVersion !== executionVersionRef.current) return
+        const progress = Math.min(1, (now - walkStart) / walkDuration)
+        const eased = 1 - Math.pow(1 - progress, 3)
+        pipX = startTile + (gateTile - startTile) * eased
+        pipXRef.current = pipX
+        lastPipX.current = pipX
+        setPipX(pipX)
+        updateDialogueAnchor(pipX)
+        reportProgress(pipX)
+        walkTickRef.current += 1
+        if (walkTickRef.current % 6 === 0) {
+        walkFrameIndexRef.current = (walkFrameIndexRef.current + 1) % TOTAL_WALK_FRAMES
+        }
+        const localTile = ((pipX % totalTiles) + totalTiles) % totalTiles
+        const visualPipX = getVisualTilePosition(localTile, totalTiles, bgPath) * (ctx.canvas.width / totalTiles)
+        const gateRectForFade = getGateRect(imgs.current.gateSprite)
+        const gateEdgePx = gateRectForFade ? gateRectForFade.visibleLeftX : ctx.canvas.width * 0.905
+        const fadeStartPx = gateEdgePx - 150
+        pipAlphaRef.current = visualPipX >= fadeStartPx
+        ? Math.max(0, 1 - (visualPipX - fadeStartPx) / 140)
+        : 1
+        drawScene(ctx, pipX, Math.sin(progress * Math.PI * 6) * 2, true, 'walk', 0, now - walkStart, pipAlphaRef.current)
+
+        if (progress < 1) {
+          raf.current = requestAnimationFrame(animateToGate)
+          return
+        }
+
+        movementRunning.current = false
+        setIsMoving(false)
+        setRunState('success')
+        setIsLevelComplete(true)
+        onResult && onResult({
+          events: [{ type: 'say', text: 'doorCode: 42' }],
+          code,
+          error: null,
+          finalX: pipX
+        })
+        startIdleLoop()
+      }
+
+      movementRunning.current = true
+      setIsMoving(true)
+      raf.current = requestAnimationFrame(animateToGate)
+      return () => {
+        cancelled = true
+        movementRunning.current = false
+        if (raf.current) cancelAnimationFrame(raf.current)
+      }
+    }
+
     function step() {
       if (cancelled || executionVersion !== executionVersionRef.current) return
       if (i >= events.length) {
         movementRunning.current = false
-        const hit = pipX >= (initialPipPosition || 0) + target
+        const hit = pipX >= (usesSharedStart ? sharedStartPosition : (initialPipPosition || 0)) + target
         lastPipX.current = pipX
         reportProgress(pipX)
         drawScene(ctx, pipX, 0, hit, 'idle', 0, 0, pipAlphaRef.current)
         setRunState(hit ? 'success' : 'idle')
-        if (hit) playSfx(ASSETS.sfxComplete)
+        if (hit) {
+          playSfx(ASSETS.sfxComplete)
+          playCompletionSequence()
+        }
         onResult && onResult({ events, code, error: null, finalX: pipX })
         startIdleLoop()
         return
@@ -978,7 +1375,7 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
           pipX = from + (to - from) * e2
           reportProgress(pipX)
           const gait = Math.sin(p * Math.PI * 4) * 2.5 // little bounce while moving
-          const isFinalStep = to >= (initialPipPosition || 0) + target
+          const isFinalStep = to >= (usesSharedStart ? sharedStartPosition : (initialPipPosition || 0)) + target
           const movementProgress = Math.max(0, Math.min(1, (elapsed - (dur - 300)) / 300))
           pipAlphaRef.current = exitAction === 'fade_out' && isFinalStep
             ? 1 - movementProgress
@@ -1075,21 +1472,8 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
 
         setBubble(outputText)
         setBubbleOpacity(1)
-        // Anchor the output bubble to the same tile center used by Pip's
-        // sprite, then place its pointer just above Pip's head.
-        const localX = ((pipX % totalTiles) + totalTiles) % totalTiles
-        const tileWidth = canvasW / Math.max(1, totalTiles)
-        const visualTile = getVisualTilePosition(localX, totalTiles, bgPath)
-        const characterCenterX = visualTile * tileWidth
-        const characterFeetY = Number.isFinite(groundLineRef.current)
-          ? groundLineRef.current
-          : canvasH * 0.72 - 26
-        const characterHeadY = characterFeetY - PIP_RENDER_HEIGHT
-        const bubbleLeft = (characterCenterX / canvasW) * 100
-        const bubbleTop = ((characterHeadY - 8) / canvasH) * 100
-
-        setBubbleX(Math.min(94, Math.max(6, bubbleLeft)))
-        setBubbleY(Math.min(82, Math.max(8, bubbleTop)))
+        // Anchor the bubble in canvas pixels, directly above Pip's head.
+        updateDialogueAnchor(pipX)
         drawScene(ctx, pipX, 0, false, 'idle', 0)
         setTimeout(() => setBubbleOpacity(0), 2400)
         setTimeout(() => {
@@ -1150,15 +1534,15 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
         height={canvasHeight}
         style={{ display:'block', width:'100%', height:'100%', objectFit:'fill', imageRendering:'pixelated' }}
       />
-      {(dialogueText || bubble) && (
+      {(dialogueText || bubble || showSpeechBubble || isLevelComplete) && (
         <div className="toast-pop" style={{
-          position:'absolute', top:`${bubbleY}%`, left:`${bubbleX}%`, transform:'translate(-50%, -100%)', opacity:bubbleOpacity, transition:'opacity 600ms ease', pointerEvents:'none', zIndex:100, whiteSpace:'pre-wrap',
+          position:'absolute', top:`${bubbleY}px`, left:`${bubbleX}px`, transform:'translate(-50%, -100%)', opacity:(showSpeechBubble || isLevelComplete) ? 1 : bubbleOpacity, transition:'opacity 600ms ease', pointerEvents:'none', zIndex:100, whiteSpace:'pre-wrap',
           background:'#fff', color:C.onyx,
           padding:'10px 16px', borderRadius:12, fontSize:14, fontWeight:500,
           boxShadow:'0 4px 14px rgba(15,23,42,.18)', maxWidth:220, width:'max-content',
           border:`1px solid ${C.onyx100}`, textAlign:'center'
         }}>
-          {dialogueText || bubble}
+          {dialogueText || bubble || GOLEM_DIALOGUE}
           <div style={{
             position:'absolute', bottom:-7, left:'50%', transform:'translateX(-50%)',
             width:0, height:0,
