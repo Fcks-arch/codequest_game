@@ -1,0 +1,78 @@
+@media screen and (max-width: 600px) {
+  .island-page__header {
+    gap: 8px !important;
+    padding: 12px 14px !important;
+  }
+
+  .island-page__header > button {
+    padding: 7px 9px !important;
+    font-size: 11px !important;
+    white-space: nowrap;
+  }
+
+  .island-page__header-count {
+    max-width: 52%;
+    font-size: 10px !important;
+    text-align: right;
+  }
+
+  .island-page__content {
+    padding: 28px 14px 40px !important;
+  }
+
+  .island-page__content h1 {
+    font-size: clamp(28px, 9vw, 36px) !important;
+    letter-spacing: 0 !important;
+    line-height: 1.15;
+  }
+
+  .island-page__level-toolbar {
+    align-items: flex-start !important;
+    flex-direction: column;
+    gap: 8px !important;
+    margin-top: 22px !important;
+  }
+
+  .island-page__level-toolbar h2 {
+    font-size: 19px !important;
+  }
+
+  .island-page__level-panel {
+    padding: 12px !important;
+    border-radius: 14px !important;
+  }
+
+  .island-level-grid {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr)) !important;
+    gap: 10px !important;
+  }
+
+  .island-level-card {
+    min-width: 0;
+    min-height: 148px !important;
+    padding: 12px !important;
+    border-radius: 12px !important;
+  }
+
+  .island-level-card > div:first-child {
+    margin-bottom: 8px !important;
+  }
+
+  .island-level-card__number {
+    width: 28px !important;
+    height: 28px !important;
+  }
+
+  .island-level-card strong {
+    overflow-wrap: anywhere;
+    font-size: 14px !important;
+  }
+
+  .island-level-card > small {
+    font-size: 9px !important;
+  }
+
+  .island-level-card > span:last-child {
+    font-size: 11px !important;
+  }
+}

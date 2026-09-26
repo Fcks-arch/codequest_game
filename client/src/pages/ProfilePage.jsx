@@ -1,15 +1,15 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import axios from 'axios'
 import { useNavigate } from 'react-router-dom'
+import { ArrowLeft, Camera, LogOut } from 'lucide-react'
 import QuestNav from '../components/QuestNav'
 import { useAuth } from '../context/AuthContext'
-import { Ico } from '../components/UI'
 
 const DEFAULT_AVATAR = 'https://api.dicebear.com/7.x/adventurer/svg?seed=codequest'
 
 export default function ProfilePage() {
   const navigate = useNavigate()
-  const { user, refreshUser } = useAuth()
+  const { user, refreshUser, logout } = useAuth()
   const [form, setForm] = useState({
     name: '',
     email: '',
@@ -97,9 +97,14 @@ export default function ProfilePage() {
       <main className="profile-page__body">
         <div className="profile-page__sidebar">
           <p className="profile-page__eyebrow">Student Profile</p>
-          <button className="profile-back" onClick={() => navigate(-1)}>
-            <Ico name="arrow-left" /> Back to Quest
-          </button>
+          <div className="profile-page__account-actions">
+            <button className="profile-back" onClick={() => navigate(-1)}>
+              <ArrowLeft size={16} aria-hidden="true" /> Back to Quest
+            </button>
+            <button type="button" className="profile-logout" onClick={logout}>
+              <LogOut size={16} aria-hidden="true" /> Log out
+            </button>
+          </div>
         </div>
 
         <div className="profile-shell">
@@ -117,7 +122,7 @@ export default function ProfilePage() {
                 onClick={handleAvatarPick}
                 title="Change Avatar"
               >
-                <Ico name="camera" /> Edit
+                <Camera size={14} aria-hidden="true" /> Edit
               </button>
               <input
                 ref={fileInputRef}
