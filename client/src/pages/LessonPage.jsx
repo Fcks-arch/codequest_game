@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
+import { ArrowLeft, RotateCw, Smartphone } from 'lucide-react'
 import axios from 'axios'
 import { useAuth } from '../context/AuthContext'
 import GameCanvas, { startBgMusic, stopBgMusic } from '../components/GameCanvas'
@@ -387,6 +388,7 @@ function GuidedPanel({
   onWrongAnswer,
   onAllStepsDone,
   taskComplete,
+  levelAlreadyCleared,
   completedCode,
   isFinalLevel,
   lives
@@ -636,26 +638,28 @@ function GuidedPanel({
           />
         </div>
 
-        <div className="lesson-lives">
-          <span className="lesson-lives-label">
-            LIVES
-          </span>
+        {!levelAlreadyCleared && (
+          <div className="lesson-lives">
+            <span className="lesson-lives-label">
+              LIVES
+            </span>
 
-          <div className="lesson-hearts">
-            {[0, 1, 2].map(index => (
-              <span
-                key={index}
-                className={
-                  index < lives
-                    ? 'life-heart active'
-                    : 'life-heart lost'
-                }
-              >
-                ♥
-              </span>
-            ))}
+            <div className="lesson-hearts">
+              {[0, 1, 2].map(index => (
+                <span
+                  key={index}
+                  className={
+                    index < lives
+                      ? 'life-heart active'
+                      : 'life-heart lost'
+                  }
+                >
+                  ♥
+                </span>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
       </div>
 
@@ -1514,6 +1518,9 @@ export default function LessonPage() {
   const [completed, setCompleted] =
     useState(false)
 
+  const [levelAlreadyCleared, setLevelAlreadyCleared] =
+    useState(false)
+
   const [completedCode, setCompletedCode] =
     useState('')
 
@@ -1572,6 +1579,7 @@ const deathResolveRef = useRef(null)
       })
       .then(res => {
         setCompleted(true)
+        setLevelAlreadyCleared(true)
 
         markLessonCompleted(
           lesson.id,
@@ -1650,6 +1658,7 @@ const deathResolveRef = useRef(null)
     setIsIntroCutscene(false)
     setHasPlayedIntro(false)
     setCompleted(false)
+    setLevelAlreadyCleared(false)
     setCompletedCode('')
     setIslandCleared(false)
     setShowGameOver(false)
@@ -1806,6 +1815,7 @@ const deathResolveRef = useRef(null)
 
         if (serverCompleted) {
           setCompleted(true)
+          setLevelAlreadyCleared(true)
           setPhase('free')
         }
 
@@ -2058,7 +2068,11 @@ const deathResolveRef = useRef(null)
 
   const handleWrongAnswer =
     useCallback(() => {
-      if (isDying || wrongAnswers >= MAX_LIVES) return
+      if (
+        levelAlreadyCleared ||
+        isDying ||
+        wrongAnswers >= MAX_LIVES
+      ) return
 
       const nextWrongAnswers = Math.min(
         wrongAnswers + 1,
@@ -2077,6 +2091,7 @@ const deathResolveRef = useRef(null)
       }
     }, [
       isDying,
+      levelAlreadyCleared,
       triggerLightningDeath,
       wrongAnswers
     ])
@@ -2434,6 +2449,7 @@ const deathResolveRef = useRef(null)
 
   return (
     <div
+      className="lesson-page"
       style={{
         height: '100vh',
         display: 'flex',
@@ -2442,8 +2458,33 @@ const deathResolveRef = useRef(null)
         background: '#0F172A'
       }}
     >
+      <div
+        className="lesson-page__orientation-prompt"
+        role="region"
+        aria-label="Phone orientation required"
+      >
+        <button
+          type="button"
+          className="lesson-page__orientation-back"
+          onClick={() =>
+            navigate(
+              getIslandRoute(lesson, location)
+            )
+          }
+        >
+          <ArrowLeft size={16} aria-hidden="true" />
+          <span>Back</span>
+        </button>
+        <div className="lesson-page__orientation-icon" aria-hidden="true">
+          <Smartphone size={34} strokeWidth={1.8} />
+          <RotateCw size={20} strokeWidth={2.4} />
+        </div>
+        <p>Rotate your phone to play</p>
+      </div>
+
       {/* TOP BAR */}
       <div
+        className="lesson-page__topbar"
         style={{
           flexShrink: 0,
           height: 50,
@@ -2461,6 +2502,7 @@ const deathResolveRef = useRef(null)
         }}
       >
         <div
+          className="lesson-page__topbar-title"
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -2469,6 +2511,7 @@ const deathResolveRef = useRef(null)
         >
           <button
             type="button"
+            className="lesson-page__back"
             onClick={() =>
               navigate(
                 getIslandRoute(
@@ -2506,8 +2549,9 @@ const deathResolveRef = useRef(null)
             }}
           />
 
-          <div>
+          <div className="lesson-page__lesson-heading">
             <div
+              className="lesson-page__island-label"
               style={{
                 fontSize: 10,
                 color: C.purple,
@@ -2525,6 +2569,7 @@ const deathResolveRef = useRef(null)
             </div>
 
             <div
+              className="lesson-page__lesson-title"
               style={{
                 fontSize: 13,
                 color:
@@ -2538,6 +2583,7 @@ const deathResolveRef = useRef(null)
         </div>
 
         <div
+          className="lesson-page__topbar-actions"
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -2666,6 +2712,7 @@ const deathResolveRef = useRef(null)
 
       {/* MAIN */}
       <div
+        className="lesson-page__main"
         style={{
           flex: 1,
           display: 'flex',
@@ -2674,6 +2721,7 @@ const deathResolveRef = useRef(null)
       >
         {/* GAME CANVAS */}
         <div
+          className="lesson-page__game"
           style={{
             flex: 1,
             position: 'relative',
@@ -2717,6 +2765,7 @@ const deathResolveRef = useRef(null)
 
         {/* RIGHT PANEL */}
         <div
+          className={`lesson-page__panel${panelOpen ? ' lesson-page__panel--open' : ''}`}
           style={{
             width: panelOpen
               ? PANEL_W
@@ -2767,6 +2816,9 @@ const deathResolveRef = useRef(null)
                   handleWrongAnswer
                 }
                 lives={lives}
+                levelAlreadyCleared={
+                  levelAlreadyCleared
+                }
                 onAllStepsDone={
                   handleAllStepsDone
                 }

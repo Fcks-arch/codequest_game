@@ -6,8 +6,6 @@ import { Ico, Pill } from './UI'
 const TABS = [
   { to: '/', end: true, label: 'Home' },
   { to: '/quest', label: 'Quest Map' },
-  { to: '/posttest', label: 'Code Challenge' },
-  { to: '/profile', label: 'Profile' },
   { to: '/leaderboard', label: 'Leaderboard' },
   { to: '/progress', label: 'My Progress' },
   { to: '/quizzes', label: 'Quizzes' },
@@ -15,7 +13,13 @@ const TABS = [
 ]
 
 export default function QuestNav() {
-  const { user, logout } = useAuth()
+  const { user } = useAuth()
+  const avatarInitials = (user?.name || 'Player')
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map(part => part[0]?.toUpperCase() || '')
+    .join('')
 
   return (
     <nav className="quest-nav">
@@ -47,9 +51,26 @@ export default function QuestNav() {
         <Pill bg="rgba(58,140,50,.2)" col="#86efac">
           <Ico n="bolt" s={13} c="#86efac" /> {user?.xp || 0} XP
         </Pill>
-        <button type="button" className="landing-login landing-login--logout" onClick={logout}>
-          Log out
-        </button>
+        <NavLink
+          to="/profile"
+          end
+          className={({ isActive }) => `quest-nav__profile${isActive ? ' quest-nav__profile--active' : ''}`}
+          aria-label={`Open ${user?.name || 'player'} profile`}
+          title="Open profile"
+        >
+          <span className="quest-nav__profile-fallback" aria-hidden="true">
+            {avatarInitials}
+          </span>
+          {user?.avatar_url && (
+            <img
+              src={user.avatar_url}
+              alt=""
+              onError={event => {
+                event.currentTarget.style.display = 'none'
+              }}
+            />
+          )}
+        </NavLink>
       </div>
     </nav>
   )

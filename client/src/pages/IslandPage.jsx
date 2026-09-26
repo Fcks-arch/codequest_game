@@ -4,6 +4,7 @@ import axios from 'axios'
 import { useAuth } from '../context/AuthContext'
 import { Ico, Pill } from '../components/UI'
 import { completedLessonIdsWithLocalFallback, getIslandStatuses, isActivityUnlocked } from '../utils/questProgress'
+import './IslandPage.css'
 
 export default function IslandPage() {
   const { id } = useParams()
@@ -43,18 +44,18 @@ export default function IslandPage() {
   if (error || !selectedModule) return <div style={pageMessage}>{error || 'Island not found.'}</div>
 
   return (
-    <main style={{ minHeight:'100vh', color:'#F8FAFC', background:'#0F172A', position:'relative', overflow:'hidden' }}>
+    <main className="island-page" style={{ minHeight:'100vh', color:'#F8FAFC', background:'#0F172A', position:'relative', overflow:'hidden' }}>
       <img src="/assets/background.png" alt="" aria-hidden="true" style={{ position:'fixed', inset:0, width:'100%', height:'100%', objectFit:'cover', opacity:.38, pointerEvents:'none' }} />
       <div style={{ position:'fixed', inset:0, background:'linear-gradient(180deg,rgba(15,23,42,.44),rgba(15,23,42,.9))', pointerEvents:'none' }} />
 
-      <header style={{ position:'relative', zIndex:1, display:'flex', justifyContent:'space-between', alignItems:'center', gap:14, padding:'17px clamp(18px,4vw,54px)', borderBottom:'1px solid rgba(255,255,255,.13)', background:'rgba(15,23,42,.74)' }}>
+      <header className="island-page__header" style={{ position:'relative', zIndex:1, display:'flex', justifyContent:'space-between', alignItems:'center', gap:14, padding:'17px clamp(18px,4vw,54px)', borderBottom:'1px solid rgba(255,255,255,.13)', background:'rgba(15,23,42,.74)' }}>
         <button type="button" onClick={() => navigate('/quest', { state: { islandId: Number(id) } })} style={backButton}>
           ← All islands
         </button>
-        <span style={{ fontSize:12, color:'#CBD5E1' }}>Island {selectedModule.order_index} of {modules.length} · {selectedModule.activities.length} levels</span>
+        <span className="island-page__header-count" style={{ fontSize:12, color:'#CBD5E1' }}>Island {selectedModule.order_index} of {modules.length} · {selectedModule.activities.length} levels</span>
       </header>
 
-      <section style={{ position:'relative', zIndex:1, maxWidth:1120, margin:'0 auto', padding:'42px 22px 64px' }}>
+      <section className="island-page__content" style={{ position:'relative', zIndex:1, maxWidth:1120, margin:'0 auto', padding:'42px 22px 64px' }}>
         <div style={{ maxWidth:720 }}>
           <p style={eyebrow}>Island landing page</p>
           <h1 style={{ margin:'0 0 11px', fontSize:'clamp(30px,5vw,48px)', letterSpacing:'-.04em' }}>{selectedModule.title}</h1>
@@ -69,7 +70,7 @@ export default function IslandPage() {
           </div>
         ) : (
           <>
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:14, marginTop:30, marginBottom:12 }}>
+            <div className="island-page__level-toolbar" style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:14, marginTop:30, marginBottom:12 }}>
               <div>
                 <p style={{ ...eyebrow, marginBottom:4 }}>Choose a level</p>
                 <h2 style={{ margin:0, fontSize:21 }}>Your learning path</h2>
@@ -77,7 +78,7 @@ export default function IslandPage() {
               <Pill bg="rgba(245,213,71,.18)" col="#FDE68A">{selectedModule.activities.filter(activity => completedIds.has(Number(activity.id))).length} / {selectedModule.activities.length} cleared</Pill>
             </div>
 
-            <div style={{ ...panel, padding:'22px', background:'rgba(15,23,42,.9)' }}>
+            <div className="island-page__level-panel" style={{ ...panel, padding:'22px', background:'rgba(15,23,42,.9)' }}>
               <div className="island-level-grid" style={{ display:'grid', gridTemplateColumns:'repeat(5, minmax(0, 1fr))', gap:14 }}>
                 {selectedModule.activities.map((activity, index) => {
                   const completed = completedIds.has(Number(activity.id))
