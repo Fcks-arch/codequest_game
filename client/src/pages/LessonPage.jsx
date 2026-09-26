@@ -187,6 +187,7 @@ function NextLevelButton({
   return (
     <button
       type="button"
+      className="lesson-guided__next"
       onClick={onNext}
       disabled={!enabled}
       style={{
@@ -583,6 +584,7 @@ function GuidedPanel({
     >
       {/* PROGRESS HEADER */}
       <div
+        className="lesson-guided__header"
         style={{
           padding: '14px 16px 10px',
           borderBottom: `1px solid ${C.onyx100}`,
@@ -665,6 +667,7 @@ function GuidedPanel({
 
       {/* CONTENT */}
       <div
+        className="lesson-guided__content"
         style={{
           flex: 1,
           overflowY: 'auto',
@@ -692,6 +695,7 @@ function GuidedPanel({
             {/* BRIEFING */}
             {stepBriefing && (
               <div
+                className="lesson-guided__briefing"
                 style={{
                   marginBottom: 12,
                   background: '#F4F1FF',
@@ -728,6 +732,7 @@ function GuidedPanel({
 
             {/* QUESTION */}
             <div
+              className="lesson-guided__prompt"
               style={{
                 fontSize: 13,
                 color: C.onyx700,
@@ -748,6 +753,7 @@ function GuidedPanel({
 
             {/* ANSWERS */}
             <div
+              className="lesson-guided__answers"
               key={`${lesson.id}-${stepIdx}-${shakeKey}`}
               style={{
                 display: 'flex',
@@ -785,9 +791,7 @@ function GuidedPanel({
                       type="button"
                       disabled={!!chosen || disabled}
                       onClick={() => pick(opt)}
-                      className={
-                        isWrong ? 'shake' : ''
-                      }
+                      className={`lesson-guided__answer${isWrong ? ' shake' : ''}`}
                       style={{
                         background: isCorrect
                           ? C.emeraldLight
@@ -894,6 +898,7 @@ function GuidedPanel({
       {/* SELECTED CODE */}
       {!taskComplete && (
         <div
+          className={`lesson-guided__selected-code${built.length === 0 ? ' lesson-guided__selected-code--empty' : ''}`}
           style={{
             flexShrink: 0,
             background: '#0B1220',
@@ -950,6 +955,7 @@ function GuidedPanel({
 
       {/* BOTTOM BUTTONS */}
       <div
+        className="lesson-guided__footer"
         style={{
           display: 'flex',
           flexDirection: 'column',
@@ -998,6 +1004,7 @@ function GuidedPanel({
 
         {!taskComplete && (
           <div
+            className="lesson-guided__footer-note"
             style={{
               marginBottom: 8,
               fontSize: 11,

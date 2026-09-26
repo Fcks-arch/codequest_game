@@ -118,8 +118,80 @@
   }
 
   .lesson-page__panel--open {
+    min-height: 0;
+  }
+
+  .lesson-page__panel--open {
     width: clamp(205px, 40vw, 300px) !important;
     min-width: clamp(205px, 40vw, 300px) !important;
+  }
+
+  .lesson-guided__header {
+    padding: 7px 10px 6px !important;
+  }
+
+  .lesson-guided__header .lesson-lives {
+    gap: 6px;
+    padding: 4px 8px;
+  }
+
+  .lesson-guided__header .life-heart {
+    font-size: 17px;
+  }
+
+  .lesson-guided__content {
+    min-height: 0;
+    padding: 7px 10px !important;
+  }
+
+  .lesson-guided__briefing {
+    margin-bottom: 6px !important;
+    padding: 7px 9px !important;
+  }
+
+  .lesson-guided__prompt {
+    margin-bottom: 6px !important;
+    padding: 7px 9px !important;
+    font-size: 11px !important;
+    line-height: 1.4 !important;
+  }
+
+  .lesson-guided__answers {
+    gap: 4px !important;
+  }
+
+  .lesson-guided__answer {
+    padding: 6px 8px !important;
+    font-size: 11px !important;
+    line-height: 1.35 !important;
+  }
+
+  .lesson-guided__selected-code {
+    max-height: 48px !important;
+    padding: 4px 9px !important;
+  }
+
+  .lesson-guided__selected-code--empty {
+    display: none;
+  }
+
+  .lesson-guided__footer {
+    gap: 2px !important;
+    padding: 4px 7px !important;
+  }
+
+  .lesson-guided__footer-note {
+    margin: 0 !important;
+    font-size: 8px !important;
+    line-height: 1.15;
+  }
+
+  .lesson-guided__footer > button,
+  .lesson-guided__next {
+    min-height: 28px;
+    padding: 4px 7px !important;
+    font-size: 10px !important;
+    border-radius: 7px !important;
   }
 }
 
