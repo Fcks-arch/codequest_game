@@ -9,6 +9,7 @@ import {
   ShieldCheck,
   ClipboardList,
   UsersRound,
+  FileText,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -48,6 +49,11 @@ const items = [
     id: 'classes',
     label: 'Classes',
     icon: UsersRound
+  },
+  {
+    id: 'reports',
+    label: 'Reports',
+    icon: FileText
   }
 ];
 
