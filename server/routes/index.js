@@ -10,6 +10,7 @@ const progress = require('../controllers/progressController');
 const code = require('../controllers/codeController');
 const teacher = require('../controllers/teacherController');
 const quizzes = require('../controllers/quizController');
+const reports = require('../controllers/reportController');
 const classController = require('../controllers/classController');
 
 
@@ -104,6 +105,18 @@ router.get(
 
 
 // ========================================================
+// TEACHER REPORTS
+// ========================================================
+
+router.get(
+  '/teacher/reports/generate',
+  authMiddleware,
+  instructorOnly,
+  reports.generate
+);
+
+
+// ========================================================
 // TEACHER QUIZZES
 // ========================================================
 
@@ -121,6 +134,26 @@ router.post(
   authMiddleware,
   instructorOnly,
   quizzes.create
+);
+
+// // ========================================================
+// QUIZ ARCHIVE / RESTORE
+// ========================================================
+//
+// NOTE: this block is registered BEFORE the '/teacher/quizzes/:id'
+// routes below on purpose. Express matches routes top-to-bottom,
+// and ':id' matches ANY single path segment — including the literal
+// word "archived". If '/teacher/quizzes/:id' were registered first,
+// GET /teacher/quizzes/archived would be swallowed by getTeacher(),
+// which tries to parse "archived" as a numeric ID and fails with
+// "Invalid quiz ID." Keep this block above the ':id' routes.
+
+// Get archived quizzes
+router.get(
+  '/teacher/quizzes/archived',
+  authMiddleware,
+  instructorOnly,
+  quizzes.listArchived
 );
 
 // Get a specific quiz for editing
@@ -147,7 +180,24 @@ router.patch(
   quizzes.toggle
 );
 
-// Delete a quiz
+// Archive a quiz
+router.patch(
+  '/teacher/quizzes/:id/archive',
+  authMiddleware,
+  instructorOnly,
+  quizzes.archive
+);
+
+// Restore an archived quiz
+router.patch(
+  '/teacher/quizzes/:id/restore',
+  authMiddleware,
+  instructorOnly,
+  quizzes.restore
+);
+
+// Permanently delete a quiz (intended to be used from the
+// Archived tab only, as a final, non-reversible step)
 router.delete(
   '/teacher/quizzes/:id',
   authMiddleware,

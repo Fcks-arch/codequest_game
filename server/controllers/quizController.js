@@ -203,112 +203,115 @@ async function replaceQuizClasses(
 }
 
 /* =========================================================
-   TEACHER - LIST QUIZZES
+   SHARED - LIST TEACHER QUIZZES (active or archived)
+   Both listTeacher and listArchived need the same shape of
+   data (quiz row + its classes), just filtered by
+   is_archived, so the query lives here once.
+========================================================= */
+
+async function fetchTeacherQuizList(teacherId, archived) {
+  const [rows] = await db.query(
+    `
+    SELECT
+      q.id,
+      q.title,
+      q.type,
+      q.lesson_id,
+      q.is_active,
+      q.is_archived,
+      q.created_at,
+      l.title AS lesson_title,
+      COUNT(DISTINCT qq.id) AS question_count,
+      COUNT(DISTINCT qr.id) AS attempt_count
+    FROM quizzes q
+    LEFT JOIN lessons l
+      ON l.id = q.lesson_id
+    LEFT JOIN quiz_questions qq
+      ON qq.quiz_id = q.id
+    LEFT JOIN quiz_results qr
+      ON qr.quiz_id = q.id
+    WHERE q.type = 'in-course'
+      AND COALESCE(q.is_archived, 0) = ?
+      AND EXISTS (
+        SELECT 1
+        FROM class_quizzes cq_owner
+        INNER JOIN classes c_owner
+          ON c_owner.id = cq_owner.class_id
+        WHERE cq_owner.quiz_id = q.id
+          AND c_owner.teacher_id = ?
+      )
+    GROUP BY
+      q.id,
+      q.title,
+      q.type,
+      q.lesson_id,
+      q.is_active,
+      q.is_archived,
+      q.created_at,
+      l.title
+    ORDER BY q.created_at DESC
+    `,
+    [archived ? 1 : 0, teacherId]
+  );
+
+  if (!rows.length) return [];
+
+  const quizIds = rows.map((quiz) => quiz.id);
+  const placeholders = quizIds.map(() => '?').join(', ');
+
+  const [classRows] = await db.query(
+    `
+    SELECT
+      cq.quiz_id,
+      c.id AS class_id,
+      c.class_name,
+      c.section
+    FROM class_quizzes cq
+    INNER JOIN classes c
+      ON c.id = cq.class_id
+    WHERE cq.quiz_id IN (${placeholders})
+      AND c.teacher_id = ?
+    ORDER BY c.class_name ASC, c.section ASC
+    `,
+    [...quizIds, teacherId]
+  );
+
+  const classesByQuiz = new Map();
+
+  for (const row of classRows) {
+    if (!classesByQuiz.has(row.quiz_id)) {
+      classesByQuiz.set(row.quiz_id, []);
+    }
+
+    classesByQuiz.get(row.quiz_id).push({
+      id: row.class_id,
+      class_name: row.class_name,
+      section: row.section
+    });
+  }
+
+  return rows.map((quiz) => {
+    const quizClasses = classesByQuiz.get(quiz.id) || [];
+
+    return {
+      ...quiz,
+      class_ids: quizClasses.map((item) => item.id),
+      class_names: quizClasses.map((item) => item.class_name),
+      classes: quizClasses
+    };
+  });
+}
+
+/* =========================================================
+   TEACHER - LIST QUIZZES (active only)
 ========================================================= */
 
 exports.listTeacher = async (req, res) => {
   try {
-    const teacherId = req.user.id;
-
-    const [rows] = await db.query(
-      `
-      SELECT
-        q.id,
-        q.title,
-        q.type,
-        q.lesson_id,
-        q.is_active,
-        q.created_at,
-        l.title AS lesson_title,
-        COUNT(DISTINCT qq.id) AS question_count,
-        COUNT(DISTINCT qr.id) AS attempt_count
-      FROM quizzes q
-      LEFT JOIN lessons l
-        ON l.id = q.lesson_id
-      LEFT JOIN quiz_questions qq
-        ON qq.quiz_id = q.id
-      LEFT JOIN quiz_results qr
-        ON qr.quiz_id = q.id
-      WHERE q.type = 'in-course'
-        AND EXISTS (
-          SELECT 1
-          FROM class_quizzes cq_owner
-          INNER JOIN classes c_owner
-            ON c_owner.id = cq_owner.class_id
-          WHERE cq_owner.quiz_id = q.id
-            AND c_owner.teacher_id = ?
-        )
-      GROUP BY
-        q.id,
-        q.title,
-        q.type,
-        q.lesson_id,
-        q.is_active,
-        q.created_at,
-        l.title
-      ORDER BY q.created_at DESC
-      `,
-      [teacherId]
+    const result = await fetchTeacherQuizList(
+      req.user.id,
+      false
     );
-
-    if (!rows.length) {
-      return res.json([]);
-    }
-
-    const quizIds = rows.map(
-      (quiz) => quiz.id
-    );
-
-    const placeholders = quizIds
-      .map(() => '?')
-      .join(', ');
-
-    const [classRows] = await db.query(
-      `
-      SELECT
-        cq.quiz_id,
-        c.id AS class_id,
-        c.class_name,
-        c.section
-      FROM class_quizzes cq
-      INNER JOIN classes c
-        ON c.id = cq.class_id
-      WHERE cq.quiz_id IN (${placeholders})
-        AND c.teacher_id = ?
-      ORDER BY c.class_name ASC, c.section ASC
-      `,
-      [...quizIds, teacherId]
-    );
-
-    const classesByQuiz = new Map();
-
-    for (const row of classRows) {
-      if (!classesByQuiz.has(row.quiz_id)) {
-        classesByQuiz.set(row.quiz_id, []);
-      }
-
-      classesByQuiz.get(row.quiz_id).push({
-        id: row.class_id,
-        class_name: row.class_name,
-        section: row.section
-      });
-    }
-
-    const result = rows.map((quiz) => {
-      const quizClasses =
-        classesByQuiz.get(quiz.id) || [];
-
-      return {
-        ...quiz,
-        class_ids: quizClasses.map(
-          (item) => item.id
-        ),
-        class_names: quizClasses.map(
-          (item) => item.class_name
-        ),
-        classes: quizClasses
-      };
-    });
 
     res.json(result);
   } catch (error) {
@@ -316,6 +319,27 @@ exports.listTeacher = async (req, res) => {
 
     res.status(500).json({
       message: 'Could not load quizzes.'
+    });
+  }
+};
+
+/* =========================================================
+   TEACHER - LIST ARCHIVED QUIZZES
+========================================================= */
+
+exports.listArchived = async (req, res) => {
+  try {
+    const result = await fetchTeacherQuizList(
+      req.user.id,
+      true
+    );
+
+    res.json(result);
+  } catch (error) {
+    console.error('listArchived:', error);
+
+    res.status(500).json({
+      message: 'Could not load archived quizzes.'
     });
   }
 };
@@ -377,9 +401,9 @@ exports.create = async (req, res) => {
       await connection.query(
         `
         INSERT INTO quizzes
-          (title, type, lesson_id, is_active)
+          (title, type, lesson_id, is_active, is_archived)
         VALUES
-          (?, 'in-course', ?, 1)
+          (?, 'in-course', ?, 1, 0)
         `,
         [
           title.trim(),
@@ -468,6 +492,7 @@ exports.getTeacher = async (
           q.type,
           q.lesson_id,
           q.is_active,
+          q.is_archived,
           q.created_at,
           l.title AS lesson_title
         FROM quizzes q
@@ -729,6 +754,7 @@ exports.update = async (
           q.type,
           q.lesson_id,
           q.is_active,
+          q.is_archived,
           q.created_at,
           l.title AS lesson_title
         FROM quizzes q
@@ -769,7 +795,7 @@ exports.update = async (
 };
 
 /* =========================================================
-   TEACHER - TOGGLE QUIZ
+   TEACHER - TOGGLE QUIZ (publish / block)
 ========================================================= */
 
 exports.toggle = async (
@@ -843,7 +869,108 @@ exports.toggle = async (
 };
 
 /* =========================================================
-   TEACHER - DELETE QUIZ
+   HELPER - CONFIRM A QUIZ BELONGS TO THIS TEACHER
+   Shared by archive/restore/remove so ownership checks stay
+   identical to the one already used by toggle().
+========================================================= */
+
+async function assertOwnedQuiz(teacherId, id) {
+  const [owned] = await db.query(
+    `
+    SELECT q.id
+    FROM quizzes q
+    WHERE q.id = ?
+      AND EXISTS (
+        SELECT 1
+        FROM class_quizzes cq
+        INNER JOIN classes c
+          ON c.id = cq.class_id
+        WHERE cq.quiz_id = q.id
+          AND c.teacher_id = ?
+      )
+    LIMIT 1
+    `,
+    [id, teacherId]
+  );
+
+  return owned.length > 0;
+}
+
+/* =========================================================
+   TEACHER - ARCHIVE QUIZ
+   Soft-removes the quiz from the active list and from
+   students' quiz list, without deleting its questions or
+   results. Reversible via restore().
+========================================================= */
+
+exports.archive = async (req, res) => {
+  try {
+    const teacherId = req.user.id;
+    const { id } = req.params;
+
+    if (!(await assertOwnedQuiz(teacherId, id))) {
+      return res.status(404).json({
+        message: 'Quiz not found.'
+      });
+    }
+
+    await db.query(
+      `
+      UPDATE quizzes
+      SET is_archived = 1
+      WHERE id = ?
+      `,
+      [id]
+    );
+
+    res.json({ is_archived: 1 });
+  } catch (error) {
+    console.error('archive quiz:', error);
+
+    res.status(500).json({
+      message: 'Could not archive the quiz.'
+    });
+  }
+};
+
+/* =========================================================
+   TEACHER - RESTORE ARCHIVED QUIZ
+========================================================= */
+
+exports.restore = async (req, res) => {
+  try {
+    const teacherId = req.user.id;
+    const { id } = req.params;
+
+    if (!(await assertOwnedQuiz(teacherId, id))) {
+      return res.status(404).json({
+        message: 'Quiz not found.'
+      });
+    }
+
+    await db.query(
+      `
+      UPDATE quizzes
+      SET is_archived = 0
+      WHERE id = ?
+      `,
+      [id]
+    );
+
+    res.json({ is_archived: 0 });
+  } catch (error) {
+    console.error('restore quiz:', error);
+
+    res.status(500).json({
+      message: 'Could not restore the quiz.'
+    });
+  }
+};
+
+/* =========================================================
+   TEACHER - DELETE QUIZ (PERMANENT)
+   Intended to only be reachable from the Archived tab in the
+   UI, as a final, non-reversible step.
 ========================================================= */
 
 exports.remove = async (
@@ -854,26 +981,7 @@ exports.remove = async (
     const teacherId = req.user.id;
     const { id } = req.params;
 
-    const [owned] =
-      await db.query(
-        `
-        SELECT q.id
-        FROM quizzes q
-        WHERE q.id = ?
-          AND EXISTS (
-            SELECT 1
-            FROM class_quizzes cq
-            INNER JOIN classes c
-              ON c.id = cq.class_id
-            WHERE cq.quiz_id = q.id
-              AND c.teacher_id = ?
-          )
-        LIMIT 1
-        `,
-        [id, teacherId]
-      );
-
-    if (!owned.length) {
+    if (!(await assertOwnedQuiz(teacherId, id))) {
       return res.status(404).json({
         message: 'Quiz not found.'
       });
@@ -969,6 +1077,7 @@ exports.listStudent = async (
 
         WHERE q.type = 'in-course'
           AND q.is_active = 1
+          AND COALESCE(q.is_archived, 0) = 0
 
         ORDER BY q.created_at DESC
         `,
@@ -1047,6 +1156,7 @@ exports.get = async (
 
         WHERE q.id = ?
           AND q.is_active = 1
+          AND COALESCE(q.is_archived, 0) = 0
 
         LIMIT 1
         `,
@@ -1256,6 +1366,7 @@ exports.submit = async (
 
         WHERE q.id = ?
           AND q.is_active = 1
+          AND COALESCE(q.is_archived, 0) = 0
 
         LIMIT 1
         `,
