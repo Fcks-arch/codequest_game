@@ -51,53 +51,90 @@ const lessons = [
     options: ['int litLanterns = 0;', 'int litLanterns;', 'int litLanterns = 0', 'boolean litLanterns = 0;'],
 },
   {
-    title: 'The Flowchart Chamber',
-    concept: 'Algorithm Design & Representation',
-    briefing: "An algorithm is a clear, ordered set of steps to solve a problem — you can express it in plain language, a flowchart, or pseudocode before ever writing real code. Put the steps of Pip's crossing in the correct sequential order.",
-    background_image: '/assets/landscapes/terrain2.png',
-    initial_tile: 6,
-    flag_tile: 10,
-    solution_code: 'if (litLanterns > 0) { System.out.println("Path is lit!"); }',
-    tile_elevations: { 9: -15, 10: -15 },
-    guided_prompt: 'Which Java statement correctly represents the chamber\'s decision step?',
-    options: ['if (litLanterns > 0) { System.out.println("Path is lit!"); }', 'if (litLanterns > 0) System.out.println("Path is lit!")', 'if litLanterns > 0 { System.out.println("Path is lit!"); }', 'while (litLanterns > 0) { System.out.println("Path is lit!"); }'],
-  },
+  title: 'The Flowchart Chamber',
+  concept: 'Algorithm Design & Representation',
+  briefing: "The bridge asks Pip one question: is at least one lantern lit? A step that asks a question is a decision, and an algorithm can contain decisions. Pip's plan: 1) Count the lit lanterns (Pip counted 3). 2) If the count is greater than 0, announce \"Path is lit!\" 3) Run across the bridge. Turn step 2 into Java. When it's correct, the console prints: Path is lit!",
+  background_image: '/assets/landscapes/cathedral-level3.png',
+  ground_fraction: 0.63,
+  initial_tile: 0,
+  flag_tile: 6,
+  solution_code: 'if (litLanterns > 0) { System.out.println("Path is lit!"); }',
+  tile_elevations: {},
+  guided_prompt: 'Which Java statement prints "Path is lit!" only if litLanterns is greater than 0?',
+  options: [
+    'if (litLanterns > 0) { System.out.println("Path is lit!"); }',
+    'if litLanterns > 0 { System.out.println("Path is lit!"); }',
+    'while (litLanterns > 0) { System.out.println("Path is lit!"); }',
+    'System.out.println("Path is lit!");'
+  ],
+},
+
   {
-    title: "The Coder's Forge",
-    concept: 'Coding - Translating Algorithms to Source Code',
-    briefing: "Coding is the step where an algorithm — already planned out — finally becomes real source code in a chosen language. Turn the anvil's pseudocode plan into a working Java statement.",
-    background_image: '/assets/landscapes/terrain3.png',
-    initial_tile: 0,
-    flag_tile: 5,
-    solution_code: 'String keyname = "Pip";',
-    tile_elevations: {},
-    guided_prompt: "Which Java declaration for the key's name is correct?",
-    options: ['String keyname = "Pip";', 'string keyname = "Pip";', 'String keyname = Pip;', 'int keyname = "Pip";'],
-  },
-  {
-    title: 'The Bug Chasm',
-    concept: 'Debugging (Compile-Time vs. Runtime Errors)',
-    briefing: 'A compile-time error stops your program before it can even run — usually a syntax mistake like a missing semicolon. A runtime error lets the program start, but something goes wrong while it\'s running, like an infinite loop. Fix the first bridge-machine\'s compile-time error to power it on.',
-    background_image: '/assets/landscapes/terrain3.png',
-    initial_tile: 5,
-    flag_tile: 10,
-    solution_code: 'System.out.println("Bridge online");',
-    tile_elevations: { 6: -10, 7: -10 },
-    guided_prompt: 'Which corrected Java statement compiles and powers on the bridge-machine?',
-    options: ['System.out.println("Bridge online");', 'System.out.println("Bridge online")', 'System.ot.println("Bridge online");', 'System.out.println("Bridge online");;'],
-  },
+  title: "The Coder's Forge",
+  concept: 'Coding - Translating an Algorithm into Source Code',
+  briefing: "The forge is where Instruction-Givers turned plans into working instructions. Its anvil only strikes for a named maker. Pip's plan: 1) Get the keyname. 2) Compare it to each name on the Roll. 3) Count the matches. Programmers code one step at a time. Step 1 is to store the keyname, the text \"Pip\". In Java, text goes in a String, inside double quotes. This line prints nothing. The anvil shows you what it stored.",
+  background_image: '/assets/landscapes/forge-level5.png',
+  ground_fraction: 0.69,   // keep your current value
+  initial_tile: 0,
+  flag_tile: 5,
+  solution_code: 'String keyname = "Pip";',
+  tile_elevations: {},
+  guided_prompt: 'Which Java statement stores the keyname Pip as text?',
+  options: ['String keyname = "Pip";', 'string keyname = "Pip";', 'String keyname = Pip;', 'int keyname = "Pip";'],
+},
+{
+  title: 'The Bug Chasm',
+  concept: 'Compile-Time vs Runtime Errors (Debugging)',
+  briefing: "Java can fail in two ways. A compile-time error means Java proofreads your instruction first and refuses to start, like a typo or a missing semicolon. A runtime error means it starts, then breaks while running, like a loop that never ends. The Wheel Bridge's panel shows this line, and Java rejects it: System.out.println(\"Bridge online\") Fix it to power the machine on.",
+  background_image: '/assets/landscapes/forge-level5.png',
+  ground_fraction: 0.69,   // same as Level 5
+  initial_tile: 5,
+  flag_tile: 9,
+  solution_code: 'System.out.println("Bridge online");',
+  tile_elevations: {},
+  guided_prompt: 'Which corrected line lets Java compile and print Bridge online?',
+  options: ['System.out.println("Bridge online");', 'System.out.println("Bridge online")', 'System.ot.println("Bridge online");', 'system.out.println("Bridge online");'],
+},
 ]
 
-async function ensureSolutionColumn(connection) {
-  const [rows] = await connection.execute(
+async function ensureSchema(connection) {
+  const [cols] = await connection.execute(
     `SELECT COUNT(*) AS count FROM INFORMATION_SCHEMA.COLUMNS
      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'lessons' AND COLUMN_NAME = 'solution_code'`
   )
-  if (Number(rows[0].count) === 0) {
+  if (Number(cols[0].count) === 0) {
     await connection.execute('ALTER TABLE lessons ADD COLUMN solution_code VARCHAR(500) NULL')
+  }
+
+  await ensureUniqueIndex(connection, 'lessons', 'uq_lessons_module_order', 'module_id, order_index')
+  await ensureUniqueIndex(connection, 'guided_steps', 'uq_guided_lesson_step', 'lesson_id, step_order')
+}
+
+async function ensureUniqueIndex(connection, table, indexName, columns) {
+  const [rows] = await connection.execute(
+    `SELECT COUNT(*) AS count FROM INFORMATION_SCHEMA.STATISTICS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?`,
+    [table, indexName]
+  )
+  if (Number(rows[0].count) === 0) {
+    await connection.execute(`ALTER TABLE ${table} ADD UNIQUE KEY ${indexName} (${columns})`)
   }
 }
 
+const LESSON_COLUMNS = [
+  'module_id', 'level_label', 'track', 'title', 'briefing', 'hint', 'goal', 'xp_reward',
+  'target_tiles', 'min_moves', 'min_says', 'min_jumps', 'required_code_label',
+  'required_code_pattern', 'solution_code', 'order_index', 'is_active', 'created_at',
+  'background_image', 'subtitle', 'description', 'grid_cols', 'grid_rows',
+  'total_tiles', 'initial_tile', 'flag_tile', 'ground_fraction', 'mechanics_config',
+]
+
+// Never overwrite the identity/key columns or created_at on update
+const NO_UPDATE = new Set(['module_id', 'order_index', 'created_at'])
+const LESSON_UPDATE_SQL = LESSON_COLUMNS
+  .filter(c => !NO_UPDATE.has(c))
+  .map(c => `${c} = VALUES(${c})`)
+  .join(', ')
 function codePattern(code) {
   return code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
@@ -106,17 +143,13 @@ async function main() {
   const connection = await mysql.createConnection(dbConfig)
 
   try {
+    // DDL auto-commits in MySQL, so do it before the transaction
+    await ensureSchema(connection)
     await connection.beginTransaction()
-    await ensureSolutionColumn(connection)
+
     await connection.execute(
       "UPDATE lesson_modules SET title = 'Java Foundations', description = 'Learn core Java concepts through the six challenges of The Whispering Ruins.' WHERE id = 1"
     )
-    await connection.execute(
-      `DELETE gs FROM guided_steps gs
-       JOIN lessons l ON l.id = gs.lesson_id
-       WHERE l.module_id = 1`
-    )
-    await connection.execute('DELETE FROM lessons WHERE module_id = 1')
 
     const lessonValues = lessons.map((lesson, index) => [
       1, `Level ${index + 1}`, 'JAVA FOUNDATIONS', lesson.title, lesson.briefing,
@@ -127,21 +160,24 @@ async function main() {
       lesson.ground_fraction, JSON.stringify({ tile_elevations: lesson.tile_elevations }),
     ])
 
+    // Upsert: existing rows keep their id, new ones get inserted
     await connection.query(
-      `INSERT INTO lessons (
-        module_id, level_label, track, title, briefing, hint, goal, xp_reward,
-        target_tiles, min_moves, min_says, min_jumps, required_code_label,
-        required_code_pattern, solution_code, order_index, is_active, created_at,
-        background_image, subtitle, description, grid_cols, grid_rows,
-        total_tiles, initial_tile, flag_tile, ground_fraction, mechanics_config
-      ) VALUES ?`,
+      `INSERT INTO lessons (${LESSON_COLUMNS.join(', ')}) VALUES ?
+       ON DUPLICATE KEY UPDATE ${LESSON_UPDATE_SQL}`,
       [lessonValues]
+    )
+
+    // If you ever remove lessons from the array, hide them instead of deleting
+    await connection.execute(
+      'UPDATE lessons SET is_active = 0 WHERE module_id = 1 AND order_index > ?',
+      [lessons.length]
     )
 
     const [rows] = await connection.query(
       'SELECT id, order_index FROM lessons WHERE module_id = 1 ORDER BY order_index'
     )
     const lessonIds = Object.fromEntries(rows.map(row => [Number(row.order_index), Number(row.id)]))
+
     const guidedValues = lessons.map((lesson, index) => [
       lessonIds[index + 1], 1, lesson.guided_prompt, lesson.options[0],
       lesson.options[1], lesson.options[2], lesson.options[3],
@@ -151,12 +187,18 @@ async function main() {
       `INSERT INTO guided_steps (
         lesson_id, step_order, prompt, correct_snippet,
         distractor_1, distractor_2, distractor_3
-      ) VALUES ?`,
+      ) VALUES ?
+      ON DUPLICATE KEY UPDATE
+        prompt = VALUES(prompt),
+        correct_snippet = VALUES(correct_snippet),
+        distractor_1 = VALUES(distractor_1),
+        distractor_2 = VALUES(distractor_2),
+        distractor_3 = VALUES(distractor_3)`,
       [guidedValues]
     )
 
     await connection.commit()
-    console.log(`Island 1 updated: ${lessons.length} lessons and ${guidedValues.length} guided steps.`)
+    console.log(`Island 1 synced: ${lessons.length} lessons and ${guidedValues.length} guided steps.`)
   } catch (error) {
     await connection.rollback()
     throw error

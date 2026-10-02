@@ -192,7 +192,7 @@
   const GOLEM_STANDING = 'STANDING'
   const LEVEL_TWO_CODE = 'int doorCode = 42;'
   const SHARED_START_FRACTION = 0.47
-  const ENTRANCE_START_TILES = { 3: 0.5 }
+  const ENTRANCE_START_TILES = { 3: 0.5, 4: 0.5, 5: 1.0 }
   const GATE_FRAME_COUNT = 5
   const GATE_MAX_OPEN_FRAME = 3
   const GATE_SCALE = 1.0
@@ -226,9 +226,8 @@
   const LEVEL_THREE_CODE = 'int litLanterns = 0;'
   // Tile whose visual position lands on the far-right edge of the bridge
   // (getVisualTilePosition clamps at TERRAIN1_MAX_VISUAL_TILE).
-  const LEVEL_THREE_EXIT_TILE = TERRAIN1_MAX_VISUAL_TILE / TERRAIN1_TILE_SCALE
-  const LEVEL_THREE_RUN_DELAY_MS = 1300   // let the torches finish igniting first
-  const LEVEL_THREE_RUN_MS = 2600         // how long the run takes
+  // Level 3: Pip stays put. This is how long the torches take to finish igniting.
+const LEVEL_THREE_DONE_DELAY_MS = FIRE_IGNITE_MS * FIRE_LAST_GROW_FRAME + 200
   const FIRE_CONFIGS = {
     3: {
       asset: '/assets/fire-ignite-level3.png',
@@ -241,33 +240,114 @@
   }
   const FIRE_LIGHT_STRENGTH = 1.0   // overall brightness of the surrounding light
   const FIRE_LIGHT_RADIUS = 0.32    // light reach, as a fraction of the background height
-  // ── Level 4: library entrance ──
-const LEVEL4_BG = '/assets/landscapes/level4_bg.png'
-const LEVEL4_FIRE_SRC = '/assets/fire-ignite-level3.png'
-const LEVEL4_IGNITE_SFX = null            // e.g. '/assets/sfx/ignite.mp3'
-const LEVEL4_FIRE_FRAMES = 8              // 0-3 ignite once, 4-7 loop
-const LEVEL4_FIRE_IGNITE_MS = 110
-const LEVEL4_FIRE_LOOP_MS = 110
-const LEVEL4_FIRE_H_FRAC = 0.09           // flame height as a fraction of background height
-const LEVEL4_GROUND_FRACTION = 0.80       // floor line (fraction of background height)
-const LEVEL4_START_FRAC = 0.07            // Pip's spawn, fraction of background width
-const LEVEL4_TARGET_FRAC = 0.32           // where he stops
-const LEVEL4_WALK_SPEED = 0.08
-const LEVEL4_FADE_MS = 1200           // background-widths per second
-const LEVEL4_LIGHT_MS = 500
-const LEVEL4_LIGHT_MAX = 0.85
-const LEVEL4_SCONCES = [{ x: 0.222, y: 0.610 }, { x: 0.655, y: 0.610 }]
-const LEVEL4_VAULT = { x: 0.91, y: 0.58 } // vault door center; tweak if the glow is off
+  const LEVEL4_POPUP_MS = 2200    // how long Pip stands still while "Path is lit!" shows
+  const LEVEL4_RUN_MS = 2600      // run across the bridge
+  const LEVEL_FOUR_MESSAGE = 'Path is lit!'
+  const LEVEL_FOUR_CODE = 'if (litLanterns > 0) { System.out.println("Path is lit!"); }'
 
-  function getVisualTilePosition(tile, totalTiles, backgroundPath) {
-    const isTerrain1Map = String(backgroundPath).endsWith('/terrain1.png') || String(backgroundPath).endsWith('/terrain1.jpg')
-    if (!isTerrain1Map) return tile
-
-    return Math.min(
-      TERRAIN1_MAX_VISUAL_TILE,
-      Math.max(0, tile * TERRAIN1_TILE_SCALE)
-    )
+  function isLevelFourSolution(src) {
+    const code = String(src || '').replace(/\s+/g, ' ').trim()
+    if (code === LEVEL_FOUR_CODE) return true
+    const m = code.match(/^int litLanterns = (\d+); (.*)$/)
+    return !!m && Number(m[1]) > 0 && m[2] === LEVEL_FOUR_CODE
   }
+function getVisualTilePosition(tile, totalTiles, backgroundPath) {
+  const isTerrain1Map = String(backgroundPath).endsWith('/terrain1.png') || String(backgroundPath).endsWith('/terrain1.jpg')
+  if (!isTerrain1Map) return tile
+
+  return Math.min(
+    TERRAIN1_MAX_VISUAL_TILE,
+    Math.max(0, tile * TERRAIN1_TILE_SCALE)
+  )
+}
+
+// ── Level 5: The Coder's Forge ──
+const LEVEL5_KEYNAME_CODE = 'String keyname = "Pip";'
+const LEVEL5_BUBBLE_TEXT = 'keyname: "Pip"'
+const LEVEL5_START_TILE = 1.0          // where Pip stops after coming down the stairs
+const LEVEL5_PIP_SCALE = 1           // Pip is drawn this much bigger on the forge map
+const LEVEL5_INTRO_MS = 3400           // door -> stairs -> stop
+const LEVEL5_INTRO_FADE_MS = 600
+// Door and stairs, as fractions of the background image (tune to the art)
+const LEVEL5_DOOR = { x: 0.050 }       // where Pip appears inside the arch
+const LEVEL5_STAIRS = { topX: 0.076, bottomX: 0.140, topY: 0.590, steps: 3 }
+const LEVEL5_FLAG_TILE = 5
+const LEVEL5_FADE_IN_MS = 700
+const LEVEL5_SPARK_WINDOW_MS = 2600   // how long sparks fly off the anvil
+const LEVEL5_TRAIL_START_MS = 500     // first ember lights up
+const LEVEL5_TRAIL_STEP_MS = 320      // delay between embers
+const LEVEL5_WALK_DELAY_MS = 1000     // Pip starts walking after this
+const LEVEL5_WALK_MS = 3400
+const LEVEL5_WALK_FPS = 12
+const LEVEL5_BUBBLE_MS = 3000
+// Positions as fractions of the background image. Tweak if a glow looks off.
+const LEVEL5_ANVIL = { x: 0.237, y: 0.549 }    // top of the anvil
+const LEVEL5_RUNES = { x: 0.237, y: 0.593 }    // rune band on the plinth
+const LEVEL5_FURNACE = { x: 0.328, y: 0.551 }  // furnace opening
+
+const rnd = n => Math.abs(Math.sin(n) * 43758.5453) % 1
+const LEVEL5_SPARKS = Array.from({ length: 30 }, (_, i) => ({
+  angle: -Math.PI * (0.12 + 0.76 * rnd(i + 1)),   // fan upward from the anvil
+  speed: 0.14 + 0.26 * rnd(i + 31),               // background-heights per second
+  delay: 0.6 * rnd(i + 61),                       // seconds before first launch
+  life: 0.6 + 0.5 * rnd(i + 91),                  // seconds per spark cycle
+}))
+
+function fillGlow(ctx, cx, cy, r, rgb, a) {
+  const g = ctx.createRadialGradient(cx, cy, 2, cx, cy, r)
+  g.addColorStop(0, `rgba(${rgb}, ${a})`)
+  g.addColorStop(1, `rgba(${rgb}, 0)`)
+  ctx.fillStyle = g
+  ctx.fillRect(cx - r, cy - r, r * 2, r * 2)
+}
+
+const walkMetricsCache = new WeakMap()
+function getWalkMetrics(img) {
+  if (!img || !img.naturalWidth) return null
+  if (walkMetricsCache.has(img)) return walkMetricsCache.get(img)
+  let result = null
+  try {
+    const W = img.naturalWidth, H = img.naturalHeight
+    const cw = Math.floor(W / WALK_SHEET_COLS)
+    const ch = Math.floor(H / WALK_SHEET_ROWS)
+    const c = document.createElement('canvas')
+    c.width = W; c.height = H
+    const g = c.getContext('2d', { willReadFrequently: true })
+    g.drawImage(img, 0, 0)
+    const data = g.getImageData(0, 0, W, H).data
+    const cells = []
+    let ux0 = Infinity, uy0 = Infinity, ux1 = -1, uy1 = -1
+    for (let r = 0; r < WALK_SHEET_ROWS; r++) {
+      for (let col = 0; col < WALK_SHEET_COLS; col++) {
+        const sx = col * cw, sy = r * ch
+        let x0 = Infinity, y0 = Infinity, x1 = -1, y1 = -1, count = 0
+        for (let y = 0; y < ch; y++) {
+          for (let x = 0; x < cw; x++) {
+            if (data[((sy + y) * W + sx + x) * 4 + 3] > 20) {
+              count++
+              if (x < x0) x0 = x
+              if (x > x1) x1 = x
+              if (y < y0) y0 = y
+              if (y > y1) y1 = y
+            }
+          }
+        }
+        if (count > 200) {           // skips empty cells and stray pixels
+          cells.push({ sx, sy })
+          ux0 = Math.min(ux0, x0); uy0 = Math.min(uy0, y0)
+          ux1 = Math.max(ux1, x1); uy1 = Math.max(uy1, y1)
+        }
+      }
+    }
+    if (cells.length) {
+      result = { cells, ub: { x: ux0, y: uy0, w: ux1 - ux0 + 1, h: uy1 - uy0 + 1 } }
+    }
+  } catch (e) {
+    console.warn('Could not measure walk sheet:', e)
+  }
+  walkMetricsCache.set(img, result)
+  return result
+}
 
   // Bump this string whenever this file changes. Log it (see the mount
   // effect below) so a quick look at the browser console tells you for
@@ -275,7 +355,7 @@ const LEVEL4_VAULT = { x: 0.91, y: 0.58 } // vault door center; tweak if the glo
   // rounds of bug reports turned out to be an old copy of this file still
   // being served (stale dev server, browser cache, or the new file not
   // actually saved to the right path) rather than the bug persisting.
-  const BUILD_TAG = 'GameCanvas 2026-09-30a (level 4 intro + lighting)'
+  const BUILD_TAG = 'GameCanvas 2026-09-30f (L5 intro: door, stairs, Pip scale)'
 
   export default function GameCanvas({ playToken, introToken = 0, replayToken = 0, onIntroComplete, code, onResult, onCharacterPosition, target, lessonData, resetToken = 0, fullHeight, levelLabel, levelTitle, initialPipPosition, eventOffset = 0, lessonId, executionMode = 'guided' }) {
     useEffect(() => { console.log('[CodeQuest]', BUILD_TAG) }, [])
@@ -347,8 +427,8 @@ const LEVEL4_VAULT = { x: 0.91, y: 0.58 } // vault door center; tweak if the glo
       String(lessonData?.level_label || '').match(/\d+/)?.[0]
     )
     const gateConfig = GATE_CONFIGS.default
-    const hasGate = currentLevel !== 2 && currentLevel !== 4
-    const fireConfig = FIRE_CONFIGS[currentLevel] || null
+    const fireConfig = FIRE_CONFIGS[currentLevel === 4 ? 3 : currentLevel] || null
+    const hasGate = currentLevel === 1
     const isLevelTwo = currentLevel === 2
     const usesSharedStart = currentLevel === 1 || isLevelTwo
     const sharedStartPosition = totalTiles * SHARED_START_FRACTION
@@ -356,12 +436,8 @@ const LEVEL4_VAULT = { x: 0.91, y: 0.58 } // vault door center; tweak if the glo
     const skipsWalkCutscene = currentLevel !== 1
     const executionVersionRef = useRef(0)
     const pipAlphaRef = useRef(1)
-    const [isIntroWalking, setIsIntroWalking] = useState(false)
-    const [isRoomLit, setIsRoomLit] = useState(false)
-    const level4LitRef = useRef(false)          // litState
-    const level4LitStartRef = useRef(0)
-    const level4PipFracRef = useRef(null)       // Pip's x as a fraction of background width
-    const level4VaultOpenRef = useRef(0)        // 0..1, for the door-opening step later
+    const level5FxRef = useRef({ active: false, start: 0 })
+     
 
     useEffect(() => {
       const img = new Image()
@@ -422,19 +498,22 @@ const LEVEL4_VAULT = { x: 0.91, y: 0.58 } // vault door center; tweak if the glo
     }, [])
 
     const updateDialogueAnchor = useCallback(pipTile => {
-      const routeTiles = Math.max(1, totalTiles)
-      const localTile = ((Number(pipTile) % routeTiles) + routeTiles) % routeTiles
-      const tileWidth = canvasW / routeTiles
-      const visualTile = getVisualTilePosition(localTile, routeTiles, bgPath)
-      const pipCanvasX = visualTile * tileWidth
-      const groundY = Number.isFinite(groundLineRef.current)
-        ? groundLineRef.current
-        : canvasH * 0.72 - 26
-      const pipHeadY = groundY - PIP_RENDER_HEIGHT - 15
+  const routeTiles = Math.max(1, totalTiles)
+  const localTile = ((Number(pipTile) % routeTiles) + routeTiles) % routeTiles
+  const tileWidth = canvasW / routeTiles
+  const visualTile = getVisualTilePosition(localTile, routeTiles, bgPath)
+  // Level 4's idle Pip is centered in his tile plus the grid inset, so match that
+  const pipCanvasX = currentLevel === 4 || currentLevel === 5
+    ? Math.max(4, tileWidth * 0.04) + (visualTile + 0.5) * tileWidth
+    : visualTile * tileWidth
+  const groundY = Number.isFinite(groundLineRef.current)
+    ? groundLineRef.current
+    : canvasH * 0.72 - 26
+    const pipHeadY = groundY - PIP_RENDER_HEIGHT * (currentLevel === 5 ? LEVEL5_PIP_SCALE : 1) - 15
 
-      setBubbleX(Math.round(pipCanvasX))
-      setBubbleY(Math.round(pipHeadY))
-    }, [bgPath, canvasH, canvasW, totalTiles])
+  setBubbleX(Math.round(pipCanvasX))
+  setBubbleY(Math.round(pipHeadY))
+}, [bgPath, canvasH, canvasW, totalTiles, currentLevel])
 
     const triggerGolemWakeAnimation = useCallback(() => {
       if (golemStateRef.current !== GOLEM_DORMANT) return
@@ -622,11 +701,7 @@ const LEVEL4_VAULT = { x: 0.91, y: 0.58 } // vault door center; tweak if the glo
     }
 
     function triggerCleanReset() {
-      level4LitRef.current = false
-      level4VaultOpenRef.current = 0
-      level4PipFracRef.current = currentLevel === 4 ? LEVEL4_START_FRAC : null
-      setIsRoomLit(false)
-
+      level5FxRef.current = { active: false, start: 0 }
       if (golemWakeTimeoutRef.current) {
         clearTimeout(golemWakeTimeoutRef.current)
         golemWakeTimeoutRef.current = null
@@ -647,8 +722,8 @@ const LEVEL4_VAULT = { x: 0.91, y: 0.58 } // vault door center; tweak if the glo
         clearInterval(fireIgniteTimerRef.current)
         fireIgniteTimerRef.current = null
       }
-      fireStateRef.current = FIRE_UNLIT
-      fireFrameRef.current = 0
+      fireStateRef.current = currentLevel === 4 ? FIRE_LIT : FIRE_UNLIT
+      fireFrameRef.current = currentLevel === 4 ? FIRE_LAST_GROW_FRAME : 0
 
       if (cutsceneRef.current) cancelAnimationFrame(cutsceneRef.current)
       cutsceneRef.current = null
@@ -691,12 +766,11 @@ const LEVEL4_VAULT = { x: 0.91, y: 0.58 } // vault door center; tweak if the glo
     }
     
     const ASSETS = {
-    ...DEFAULT_ASSETS,
-    background: currentLevel === 4 ? LEVEL4_BG : getBackgroundImageForCurrentMap(),
-    gateSprite: hasGate ? gateConfig.asset : null,
-    fireSprite: fireConfig?.asset || null,
-    blueFireSprite: currentLevel === 4 ? LEVEL4_FIRE_SRC : null,
-  }
+  ...DEFAULT_ASSETS,
+  background: getBackgroundImageForCurrentMap(),
+  gateSprite: hasGate ? gateConfig.asset : null,
+  fireSprite: fireConfig?.asset || null,
+}
 
     // Which lesson/run this position belongs to. The start position is immutable
     // for the lesson; live movement remains in this component between steps.
@@ -712,7 +786,7 @@ const LEVEL4_VAULT = { x: 0.91, y: 0.58 } // vault door center; tweak if the glo
       pipXRef.current = spawnPosition
       lastPipX.current = spawnPosition
       currentTileRef.current = spawnPosition
-      pipAlphaRef.current = currentLevel === 4 ? 0 : 1
+      pipAlphaRef.current = 1
       setPipX(spawnPosition)
       setTileProgress(spawnPosition)
       setRunState('idle')
@@ -747,8 +821,8 @@ const LEVEL4_VAULT = { x: 0.91, y: 0.58 } // vault door center; tweak if the glo
         clearInterval(fireIgniteTimerRef.current)
         fireIgniteTimerRef.current = null
       }
-      fireStateRef.current = FIRE_UNLIT
-      fireFrameRef.current = 0
+      fireStateRef.current = currentLevel === 4 ? FIRE_LIT : FIRE_UNLIT
+      fireFrameRef.current = currentLevel === 4 ? FIRE_LAST_GROW_FRAME : 0
       executionVersionRef.current += 1
       if (raf.current) cancelAnimationFrame(raf.current)
       if (idleRaf.current) cancelAnimationFrame(idleRaf.current)
@@ -860,94 +934,72 @@ const LEVEL4_VAULT = { x: 0.91, y: 0.58 } // vault door center; tweak if the glo
     return { frameWidth, srcX0, srcY0, srcW, srcH, destX, destY, destW, destH, visibleLeftX: destX }
   }
 
-      function drawLevel4Lighting(ctx, now) {
+    function drawLevel5Effects(ctx, now) {
+    const fx = level5FxRef.current
+    if (!fx.active) return
     const { dx, dy, dw, dh } = bgRenderRectRef.current
     if (!dw) return
-    const t = level4LitRef.current
-      ? Math.min(1, (now - level4LitStartRef.current) / LEVEL4_LIGHT_MS)
-      : 0
-    const alpha = t * LEVEL4_LIGHT_MAX          // 0.0 -> 0.85 over ~500ms
+
+    const t = now - fx.start
+    const W = ctx.canvas.width
+    const tileW = W / Math.max(1, totalTiles)
+    const feet = groundLineRef.current
+    const ramp = Math.min(1, t / 700)
+    const pulse = 0.8 + Math.sin(now / 170) * 0.12
 
     ctx.save()
-    // darkness veil that fades away as the room lights up
-    ctx.fillStyle = `rgba(2, 6, 18, ${0.45 * (1 - t)})`
-    ctx.fillRect(dx, dy, dw, dh)
+    ctx.globalCompositeOperation = 'lighter'
 
-    if (alpha > 0) {
-      ctx.globalCompositeOperation = 'lighter'
-      LEVEL4_SCONCES.forEach((s, idx) => {
-        const flicker = 0.93 + Math.sin(now / 140 + idx * 2.1) * 0.05 + Math.sin(now / 53 + idx * 4.7) * 0.02
-        const cx = dx + dw * s.x
-        const cy = dy + dh * s.y
-        const r = dh * 0.55
-        const glow = ctx.createRadialGradient(cx, cy, 6, cx, cy, r)
-        glow.addColorStop(0, `rgba(90, 170, 255, ${alpha * flicker})`)
-        glow.addColorStop(0.4, `rgba(50, 110, 230, ${alpha * 0.4 * flicker})`)
-        glow.addColorStop(1, 'rgba(30, 70, 200, 0)')
-        ctx.fillStyle = glow
-        ctx.fillRect(cx - r, cy - r, r * 2, r * 2)
+    fillGlow(ctx, dx + dw * LEVEL5_RUNES.x, dy + dh * LEVEL5_RUNES.y, dh * 0.17, '0, 240, 255', 0.5 * ramp * pulse)
+    fillGlow(ctx, dx + dw * LEVEL5_FURNACE.x, dy + dh * LEVEL5_FURNACE.y, dh * 0.2, '255, 140, 40', 0.42 * ramp * pulse)
 
-        // light pooling on the stone floor
-        ctx.save()
-        ctx.translate(cx, groundLineRef.current)
-        ctx.scale(1, 0.18)
-        const floorR = r * 0.9
-        const pool = ctx.createRadialGradient(0, 0, 4, 0, 0, floorR)
-        pool.addColorStop(0, `rgba(70, 150, 255, ${alpha * 0.45 * flicker})`)
-        pool.addColorStop(1, 'rgba(70, 150, 255, 0)')
-        ctx.fillStyle = pool
-        ctx.beginPath()
-        ctx.arc(0, 0, floorR, 0, Math.PI * 2)
-        ctx.fill()
-        ctx.restore()
+    if (t < LEVEL5_SPARK_WINDOW_MS) {
+      const emitFade = Math.min(1, (LEVEL5_SPARK_WINDOW_MS - t) / 600)
+      const size = Math.max(2, dh * 0.006)
+      const ax = dx + dw * LEVEL5_ANVIL.x
+      const ay = dy + dh * LEVEL5_ANVIL.y
+      LEVEL5_SPARKS.forEach((s, i) => {
+        const local = t / 1000 - s.delay
+        if (local < 0) return
+        const age = local % s.life
+        const p = age / s.life
+        const x = ax + Math.cos(s.angle) * s.speed * dh * age
+        const y = ay + Math.sin(s.angle) * s.speed * dh * age + 0.5 * dh * 0.7 * age * age
+        const a = (1 - p) * emitFade
+        ctx.fillStyle = i % 3 === 0 ? `rgba(255, 235, 170, ${a})` : `rgba(255, 160, 50, ${a})`
+        ctx.fillRect(Math.round(x), Math.round(y), size, size)
       })
     }
-    ctx.restore()
-  }
 
-    function drawBrazierFire(ctx, now) {
-    if (!level4LitRef.current) return
-    const img = imgs.current.blueFireSprite
-    if (!img || img.naturalWidth <= 0) return
-    const { dx, dy, dw, dh } = bgRenderRectRef.current
-    const elapsed = now - level4LitStartRef.current
-    const frameIdx = elapsed < FIRE_IGNITE_MS * FIRE_LAST_GROW_FRAME
-      ? Math.floor(elapsed / FIRE_IGNITE_MS)
-      : FIRE_FLICKER_FRAMES[Math.floor(now / FIRE_FLICKER_MS) % FIRE_FLICKER_FRAMES.length]
-    const fr = FIRE_FRAMES[Math.min(frameIdx, FIRE_FRAMES.length - 1)]
-    const scale = (dh * LEVEL4_FIRE_H_FRAC) / FIRE_REF_H
-    const destW = fr.w * scale
-    const destH = fr.h * scale
+    const emberSize = Math.max(2, dh * 0.007)
+    for (let k = 1; k <= LEVEL5_FLAG_TILE; k++) {
+      const litAt = LEVEL5_TRAIL_START_MS + k * LEVEL5_TRAIL_STEP_MS
+      if (t < litAt) continue
+      const age = t - litAt
+      const grow = Math.min(1, age / 350)
+      const flash = 1 + Math.max(0, 1 - age / 300) * 0.8
+      const flicker = 0.8 + Math.sin(now / 120 + k * 1.7) * 0.15
+      const strength = grow * flicker * flash
+      const cx = Math.max(4, tileW * 0.04) + (k + 0.5) * tileW
 
-    ctx.save()
-    ctx.globalCompositeOperation = 'lighter'
-    ctx.imageSmoothingEnabled = false
-    LEVEL4_SCONCES.forEach(s => {
-      const cx = dx + dw * s.x
-      const bottom = dy + dh * s.y
-      ctx.drawImage(img, fr.x, fr.y, fr.w, fr.h, cx - destW / 2, bottom - destH, destW, destH)
-    })
-    ctx.restore()
-  }
+      ctx.save()
+      ctx.translate(cx, feet - 2)
+      ctx.scale(1, 0.2)
+      const r = tileW * 0.55
+      const g = ctx.createRadialGradient(0, 0, 2, 0, 0, r)
+      g.addColorStop(0, `rgba(255, 190, 90, ${0.55 * strength})`)
+      g.addColorStop(1, 'rgba(255, 120, 40, 0)')
+      ctx.fillStyle = g
+      ctx.beginPath()
+      ctx.arc(0, 0, r, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.restore()
 
-  function drawVaultDoorOverlay(ctx) {
-    if (!level4LitRef.current) return
-    const { dx, dy, dw, dh } = bgRenderRectRef.current
-    if (!dw) return
-    const now = performance.now()
-    const lit = Math.min(1, (now - level4LitStartRef.current) / LEVEL4_LIGHT_MS)
-    const open = level4VaultOpenRef.current
-    const cx = dx + dw * LEVEL4_VAULT.x
-    const cy = dy + dh * LEVEL4_VAULT.y
-    const r = dh * (0.16 + open * 0.10)
-    const pulse = 0.10 + Math.sin(now / 400) * 0.04 + open * 0.5
-    ctx.save()
-    ctx.globalCompositeOperation = 'lighter'
-    const g = ctx.createRadialGradient(cx, cy, 4, cx, cy, r)
-    g.addColorStop(0, `rgba(0, 240, 255, ${pulse * lit})`)
-    g.addColorStop(1, 'rgba(0, 240, 255, 0)')
-    ctx.fillStyle = g
-    ctx.fillRect(cx - r, cy - r, r * 2, r * 2)
+      const bob = Math.sin(now / 260 + k) * 3
+      ctx.fillStyle = `rgba(255, 230, 150, ${Math.min(1, 0.85 * strength)})`
+      ctx.fillRect(Math.round(cx - emberSize / 2), Math.round(feet - dh * 0.02 - 6 + bob), emberSize, emberSize)
+    }
+
     ctx.restore()
   }
 
@@ -984,7 +1036,7 @@ const LEVEL4_VAULT = { x: 0.91, y: 0.58 } // vault door center; tweak if the glo
         ctx.fillStyle = '#17233B'
         ctx.fillRect(0, 0, W, H)
         ctx.drawImage(bg, dx, dy, dw, dh)
-        feetLine = dy + (currentLevel === 4 ? LEVEL4_GROUND_FRACTION : groundFraction) * dh
+        feetLine = dy + groundFraction * dh
         ctx.imageSmoothingEnabled = true
       } else {
         const sky = ctx.createLinearGradient(0, 0, 0, GY)
@@ -1182,19 +1234,12 @@ const LEVEL4_VAULT = { x: 0.91, y: 0.58 } // vault door center; tweak if the glo
 
     ctx.restore()
   }
-    if (currentLevel === 4) {
-      const nowL4 = performance.now()
-      drawLevel4Lighting(ctx, nowL4)
-      drawBrazierFire(ctx, nowL4)
-    }
-      const CW = PIP_RENDER_WIDTH
-      const movementRenderHeight = PIP_RENDER_HEIGHT
+      if (currentLevel === 5) drawLevel5Effects(ctx, performance.now())
+      const pipScale = currentLevel === 5 ? LEVEL5_PIP_SCALE : 1
+      const CW = PIP_RENDER_WIDTH * pipScale
+      const movementRenderHeight = PIP_RENDER_HEIGHT * pipScale
       const totalBob = bounce + idleBob
-      const centerOverride = Number.isFinite(characterCenterX)
-      ? characterCenterX
-      : (currentLevel === 4 && level4PipFracRef.current != null
-          ? bgRenderRectRef.current.dx + bgRenderRectRef.current.dw * level4PipFracRef.current
-          : null)
+      const centerOverride = Number.isFinite(characterCenterX) ? characterCenterX : null
       const CX = Number.isFinite(centerOverride)
       ? centerOverride - CW / 2
       : Math.max(4, Math.min(W - CW - 4, visualTile * tileWidth - CW / 2))
@@ -1218,32 +1263,20 @@ const LEVEL4_VAULT = { x: 0.91, y: 0.58 } // vault door center; tweak if the glo
           const rawPos = Math.max(0, animMs) / 1000 * FPS[poseKey]
           const i0 = Math.floor(rawPos)
           const isWalk = poseKey === 'characterWalk'
-          if (isWalk) {
-            const sheetWidth = poseImg.naturalWidth || poseImg.width
-            const sheetHeight = poseImg.naturalHeight || poseImg.height
-            const frameWidth = Math.floor(sheetWidth / WALK_SHEET_COLS)
-            const frameHeight = Math.floor(sheetHeight / WALK_SHEET_ROWS)
-            const currentPipFrame = walkFrameIndexRef.current % TOTAL_WALK_FRAMES
-            const col = currentPipFrame % WALK_SHEET_COLS
-            const row = Math.floor(currentPipFrame / WALK_SHEET_COLS)
-            const boundedSourceX = col * frameWidth
-            const boundedSourceY = row * frameHeight
+                    if (isWalk) {
+            const wm = getWalkMetrics(poseImg)
+            if (!wm) throw new Error('Walk sheet has no visible frames.')
+            const cell = wm.cells[walkFrameIndexRef.current % wm.cells.length]
             const drawHeight = movementRenderHeight
-            const drawWidth = drawHeight * (frameWidth / frameHeight)
+            const drawWidth = drawHeight * (wm.ub.w / wm.ub.h)
             const drawX = Math.round(CX + (CW - drawWidth) / 2)
             const drawY = Math.round(CY_base - drawHeight)
-
-            if (![frameWidth, frameHeight, drawWidth, drawX, drawY, boundedSourceX, boundedSourceY].every(Number.isFinite) ||
-                frameWidth <= 0 || frameHeight <= 0 ||
-                boundedSourceX + frameWidth > sheetWidth || boundedSourceY + frameHeight > sheetHeight) {
-              throw new Error('Invalid walk sprite grid dimensions.')
-            }
 
             ctx.imageSmoothingEnabled = false
             ctx.globalAlpha = renderAlpha
             ctx.drawImage(
               poseImg,
-              boundedSourceX, boundedSourceY, frameWidth, frameHeight,
+              cell.sx + wm.ub.x, cell.sy + wm.ub.y, wm.ub.w, wm.ub.h,
               drawX, drawY, drawWidth, drawHeight
             )
             ctx.globalAlpha = 1
@@ -1264,7 +1297,7 @@ const LEVEL4_VAULT = { x: 0.91, y: 0.58 } // vault door center; tweak if the glo
             throw new Error(`Invalid sprite frame for ${poseKey}.`)
           }
           const isIdle = poseKey === 'characterIdle'
-          const spriteScale = PIP_RENDER_HEIGHT / (poseKey === 'characterRun' ? RUN_FRAME_BOX.h : currentFrame.h)
+          const spriteScale = movementRenderHeight / (poseKey === 'characterRun' ? RUN_FRAME_BOX.h : currentFrame.h)
           const drawFrame = (animFrame, alpha) => {
             if (isIdle) {
               const sourceX = animFrame.x
@@ -1336,9 +1369,8 @@ const LEVEL4_VAULT = { x: 0.91, y: 0.58 } // vault door center; tweak if the glo
       // Wrapper so the vault overlay is always drawn LAST, even though the
   // walk pose returns early from drawSceneInner.
   function drawScene(...args) {
-    drawSceneInner(...args)
-    if (currentLevel === 4) drawVaultDoorOverlay(args[0])
-  }
+  drawSceneInner(...args)
+}
 
     drawSceneRef.current = drawScene
 
@@ -1348,9 +1380,92 @@ const LEVEL4_VAULT = { x: 0.91, y: 0.58 } // vault door center; tweak if the glo
       return () => stopIdleLoop()
     }, [assetsReady, stopIdleLoop])
 
+        // Level 5 intro: Pip fades in inside the arched door, walks down the stairs, stops by the anvil
     useEffect(() => {
-      if (currentLevel === 4) return
+      if (currentLevel !== 5 || !assetsReady) return undefined
+      const ctx = cvs.current?.getContext('2d')
+      if (!ctx) return undefined
 
+      let cancelled = false
+      let frame = 0
+      let start = null
+
+      stopIdleLoop()
+      movementRunning.current = true
+      pipAlphaRef.current = 0
+      walkFrameIndexRef.current = 0
+      lastPipX.current = LEVEL5_START_TILE
+      currentTileRef.current = LEVEL5_START_TILE
+
+      // 0..1 -> stepped 0..1: a quick drop, then flat, repeated for each stair
+      const stairStep = t => {
+        const s = Math.min(1, Math.max(0, t)) * LEVEL5_STAIRS.steps
+        const i = Math.min(LEVEL5_STAIRS.steps - 1, Math.floor(s))
+        const u = Math.min(1, (s - i) / 0.4)
+        return (i + u * u * (3 - 2 * u)) / LEVEL5_STAIRS.steps
+      }
+
+      const finish = () => {
+        pipAlphaRef.current = 1
+        pipXRef.current = LEVEL5_START_TILE
+        lastPipX.current = LEVEL5_START_TILE
+        currentTileRef.current = LEVEL5_START_TILE
+        setPipX(LEVEL5_START_TILE)
+        movementRunning.current = false
+        walkFrameIndexRef.current = 0
+        startIdleLoop()
+        onIntroComplete?.()
+      }
+
+      const step = now => {
+        if (cancelled) return
+        if (level5FxRef.current.active) { pipAlphaRef.current = 1; return }  // code already run
+        const { dx, dy, dw, dh } = bgRenderRectRef.current
+        if (!dw) { frame = requestAnimationFrame(step); return }
+        if (start === null) start = now
+
+        const elapsed = now - start
+        const p = Math.min(1, elapsed / LEVEL5_INTRO_MS)
+        const e = p * p * (3 - 2 * p)
+
+        const tileW = ctx.canvas.width / Math.max(1, totalTiles)
+        const xStop = Math.max(4, tileW * 0.04) + (LEVEL5_START_TILE + 0.5) * tileW
+        const xDoor = dx + dw * LEVEL5_DOOR.x
+        const xTop = dx + dw * LEVEL5_STAIRS.topX
+        const xBottom = Math.min(dx + dw * LEVEL5_STAIRS.bottomX, xStop)
+        const yTop = dy + dh * LEVEL5_STAIRS.topY
+        const yGround = groundLineRef.current
+
+        const L1 = Math.max(1, xTop - xDoor)
+        const L2 = Math.max(1, xBottom - xTop)
+        const d = e * Math.max(1, xStop - xDoor)
+        const cx = xDoor + d
+        const fy = d <= L1 ? yTop
+          : d <= L1 + L2 ? yTop + (yGround - yTop) * stairStep((d - L1) / L2)
+          : yGround
+
+        pipAlphaRef.current = Math.min(1, elapsed / LEVEL5_INTRO_FADE_MS)
+        walkFrameIndexRef.current = Math.floor((elapsed / 1000) * LEVEL5_WALK_FPS)
+        const onStairs = d > L1 && d < L1 + L2
+        const bounce = onStairs ? 0 : Math.sin(elapsed / 110) * 1.2
+
+        drawScene(ctx, LEVEL5_START_TILE, bounce, false, 'walk', 0, elapsed, pipAlphaRef.current, fy, cx)
+
+        if (p < 1) { frame = requestAnimationFrame(step); return }
+        finish()
+      }
+
+      frame = requestAnimationFrame(step)
+      return () => {
+        cancelled = true
+        cancelAnimationFrame(frame)
+        movementRunning.current = false
+        pipAlphaRef.current = 1
+      }
+    }, [introToken, currentLevel, assetsReady, lessonId, resetToken, replayToken]) // eslint-disable-line    
+
+    useEffect(() => {
+      if (currentLevel === 5) return undefined
       if (skipsWalkCutscene && !usesSharedStart) {
         pipXRef.current = entranceStartTile
         lastPipX.current = entranceStartTile
@@ -1473,83 +1588,10 @@ const LEVEL4_VAULT = { x: 0.91, y: 0.58 } // vault door center; tweak if the glo
       }
       }, [introToken, assetsReady, usesSharedStart, isLevelTwo, sharedStartPosition, skipsWalkCutscene, entranceStartTile]) // eslint-disable-line
 
-    // Level 4 intro: fades Pip in at the doorway, walks him right, lights the room
-useEffect(() => {
-  if (currentLevel !== 4 || !assetsReady) return undefined
-  const ctx = cvs.current?.getContext('2d')
-  if (!ctx) return undefined
-  console.log('[L4] intro started')
-
-  let cancelled = false
-  let unlockTimer = null
-  let last = null
-  let fadeStart = null
-
-  movementRunning.current = true
-  stopIdleLoop()
-  pipAlphaRef.current = 0
-  level4LitRef.current = false
-  level4PipFracRef.current = LEVEL4_START_FRAC
-  walkFrameIndexRef.current = 0
-  walkTickRef.current = 0
-  setIsRoomLit(false)
-  setIsIntroWalking(true)
-
-  const step = now => {
-    if (cancelled) return
-    if (last === null) last = now
-    if (fadeStart === null) fadeStart = now
-    const dt = Math.min(50, now - last)
-    last = now
-
-    const ft = Math.min(1, (now - fadeStart) / LEVEL4_FADE_MS)
-    pipAlphaRef.current = ft * ft * (3 - 2 * ft)
-
-    const nextFrac = Math.min(
-      LEVEL4_TARGET_FRAC,
-      level4PipFracRef.current + LEVEL4_WALK_SPEED * (dt / 1000)
-    )
-    level4PipFracRef.current = nextFrac
-
-    walkTickRef.current += 1
-    if (walkTickRef.current % 6 === 0) {
-      walkFrameIndexRef.current = (walkFrameIndexRef.current + 1) % TOTAL_WALK_FRAMES
-    }
-    drawScene(ctx, lastPipX.current, Math.sin(walkTickRef.current / 8) * 2.2, false, 'walk', 0, 0, pipAlphaRef.current)
-
-    if (nextFrac < LEVEL4_TARGET_FRAC) {
-      raf.current = requestAnimationFrame(step)
-      return
-    }
-
-    // Arrived: fully visible, idle pose, light the room
-    pipAlphaRef.current = 1
-    walkFrameIndexRef.current = 0
-    level4LitRef.current = true
-    level4LitStartRef.current = performance.now()
-    setIsRoomLit(true)
-    setIsIntroWalking(false)
-    playSfx(LEVEL4_IGNITE_SFX)
-    movementRunning.current = false
-    startIdleLoop()
-
-    unlockTimer = setTimeout(() => {
-      if (!cancelled) onIntroComplete?.()
-    }, LEVEL4_LIGHT_MS + LEVEL4_FIRE_IGNITE_MS * 4)
-  }
-
-  raf.current = requestAnimationFrame(step)
-  return () => {
-    cancelled = true
-    if (unlockTimer) clearTimeout(unlockTimer)
-    movementRunning.current = false
-    if (raf.current) cancelAnimationFrame(raf.current)
-  }
-}, [currentLevel, assetsReady, lessonId, resetToken, replayToken, introToken]) // eslint-disable-line
+ 
 
     useEffect(() => {
       if (playToken === 0) return
-      if (currentLevel === 4 && !level4LitRef.current) return
       movementRunning.current = true
       stopIdleLoop()
       pipAlphaRef.current = 1
@@ -1569,7 +1611,9 @@ useEffect(() => {
         String(code || '').trim() === GOLEM_CORRECT_SNIPPET
       const normalizedCode = String(code || '').replace(/\s+/g, ' ').trim()
       const isLocalLevelTwoSuccess = isLevelTwo && normalizedCode === LEVEL_TWO_CODE
-          const isLocalLevelThreeSuccess = currentLevel === 3 && normalizedCode === LEVEL_THREE_CODE
+      const isLocalLevelThreeSuccess = currentLevel === 3 && normalizedCode === LEVEL_THREE_CODE
+      const isLocalLevelFourSuccess = currentLevel === 4 && isLevelFourSolution(code)
+      const isLocalLevelFiveSuccess = currentLevel === 5 && normalizedCode === LEVEL5_KEYNAME_CODE
 
       if (isLocalLevelThreeSuccess) {
         triggerFireIgnite()
@@ -1587,7 +1631,7 @@ useEffect(() => {
         finalX: lastPipX.current
       })
       startIdleLoop()
-    } else if (!isLocalLevelTwoSuccess && !isLocalLevelThreeSuccess) {
+    } else if (!isLocalLevelTwoSuccess && !isLocalLevelThreeSuccess && !isLocalLevelFourSuccess && !isLocalLevelFiveSuccess) {
       runCodeInWorker(code, lessonId, undefined, executionMode).then(res => {
         if (cancelled || executionVersion !== executionVersionRef.current) return
         executionFinished = true
@@ -1716,64 +1760,181 @@ useEffect(() => {
     }
 
     if (isLocalLevelThreeSuccess) {
+  executionFinished = true
+  pipAlphaRef.current = 1
+  movementRunning.current = false
+  setIsMoving(false)
+  startIdleLoop()   // Pip stays put; idle loop keeps the torch flicker animating
+
+  const doneTimer = setTimeout(() => {
+    if (cancelled || executionVersion !== executionVersionRef.current) return
+    setRunState('idle')
+    onResult && onResult({ events: [], code, error: null, finalX: pipX })
+  }, LEVEL_THREE_DONE_DELAY_MS)
+
+  return () => {
+    cancelled = true
+    clearTimeout(doneTimer)
+    movementRunning.current = false
+    if (raf.current) cancelAnimationFrame(raf.current)
+  }
+}
+  if (isLocalLevelFourSuccess) {
+  executionFinished = true
+  const popupStart = performance.now()
+  const fadeStartFraction = 0.85
+
+  const W = ctx.canvas.width
+  const tileW = W / Math.max(1, totalTiles)
+  const startVisual = getVisualTilePosition(
+    ((pipX % totalTiles) + totalTiles) % totalTiles, totalTiles, bgPath
+  )
+  const startCenterX = Math.max(4, tileW * 0.04) + (startVisual + 0.5) * tileW
+  let bubbleFaded = false
+  let bubbleRemoved = false
+
+  setBubble(LEVEL_FOUR_MESSAGE)
+  setDialogueText('')
+  setBubbleOpacity(1)
+  updateDialogueAnchor(pipX)
+
+  const animate = now => {
+    if (cancelled || executionVersion !== executionVersionRef.current) return
+    const sincePopup = now - popupStart
+
+    // Phase 1: Pip stands at his starting point while the popup shows
+    if (sincePopup < LEVEL4_POPUP_MS) {
+      if (!bubbleFaded && sincePopup > LEVEL4_POPUP_MS - 500) {
+        bubbleFaded = true
+        setBubbleOpacity(0)
+      }
+      pipAlphaRef.current = 1
+      drawScene(ctx, pipX, 0, false, 'idle', 0, now, 1)
+      raf.current = requestAnimationFrame(animate)
+      return
+    }
+    if (!bubbleRemoved) { bubbleRemoved = true; setBubble(null) }
+
+    // Phase 2: Pip runs across the platform and fades at the far edge
+    const { dx, dw } = bgRenderRectRef.current
+    const endCenterX = dx + dw - PIP_RENDER_WIDTH * 0.4
+    const elapsed = sincePopup - LEVEL4_POPUP_MS
+    const progress = Math.min(1, elapsed / LEVEL4_RUN_MS)
+    const eased = progress < 0.5
+      ? 2 * progress * progress
+      : 1 - Math.pow(-2 * progress + 2, 2) / 2
+    const centerX = startCenterX + (endCenterX - startCenterX) * eased
+    const fadeProgress = Math.max(0, (eased - fadeStartFraction) / (1 - fadeStartFraction))
+    pipAlphaRef.current = 1 - fadeProgress
+
+    drawScene(ctx, pipX, Math.sin(progress * Math.PI * 10) * 2.5, false, 'run', 0, elapsed, pipAlphaRef.current, null, centerX)
+
+    if (progress < 1) {
+      raf.current = requestAnimationFrame(animate)
+      return
+    }
+
+    pipAlphaRef.current = 0
+    movementRunning.current = false
+    setIsMoving(false)
+    setRunState('success')
+    onResult && onResult({
+      events: [{ type: 'say', text: LEVEL_FOUR_MESSAGE }],
+      code,
+      error: null,
+      finalX: pipX
+    })
+    startIdleLoop()
+  }
+
+  setIsMoving(true)
+  raf.current = requestAnimationFrame(animate)
+  return () => {
+    cancelled = true
+    movementRunning.current = false
+    if (raf.current) cancelAnimationFrame(raf.current)
+  }
+}
+
+      if (isLocalLevelFiveSuccess) {
       executionFinished = true
-      const startTile = pipX
-      const runStart = performance.now() + LEVEL_THREE_RUN_DELAY_MS
-      const fadeStartFraction = 0.85
+      const startTile = pipX >= LEVEL5_FLAG_TILE ? LEVEL5_START_TILE : pipX
+      const endTile = LEVEL5_FLAG_TILE
+      pipX = startTile
+      lastPipX.current = startTile
 
       const W = ctx.canvas.width
       const tileW = W / Math.max(1, totalTiles)
-      const startVisual = getVisualTilePosition(
-        ((startTile % totalTiles) + totalTiles) % totalTiles, totalTiles, bgPath
-      )
-      const startCenterX = Math.max(4, tileW * 0.04) + (startVisual + 0.5) * tileW
+      const centerForTile = tile => Math.max(4, tileW * 0.04) + (tile + 0.5) * tileW
 
-      const animateExit = now => {
+      const t0 = performance.now()
+      level5FxRef.current = { active: true, start: t0 }
+
+      const { dx, dy, dw, dh } = bgRenderRectRef.current
+      setBubble(LEVEL5_BUBBLE_TEXT)
+      setDialogueText('')
+      setBubbleOpacity(1)
+      setBubbleX(Math.round(dx + dw * LEVEL5_ANVIL.x))
+      setBubbleY(Math.round(dy + dh * (LEVEL5_ANVIL.y - 0.03)))
+
+      let bubbleFaded = false
+      let bubbleRemoved = false
+      let lastCount = -1
+
+      const animate = now => {
         if (cancelled || executionVersion !== executionVersionRef.current) return
+        const elapsed = now - t0
 
-        if (now < runStart) {
+        if (!bubbleFaded && elapsed > LEVEL5_BUBBLE_MS - 500) { bubbleFaded = true; setBubbleOpacity(0) }
+        if (!bubbleRemoved && elapsed > LEVEL5_BUBBLE_MS) { bubbleRemoved = true; setBubble(null) }
+
+        const walkElapsed = elapsed - LEVEL5_WALK_DELAY_MS
+        if (walkElapsed < 0) {
+          pipAlphaRef.current = 1
           drawScene(ctx, pipX, 0, false, 'idle', 0, now, 1)
-          raf.current = requestAnimationFrame(animateExit)
+          raf.current = requestAnimationFrame(animate)
           return
         }
 
-        const { dx, dw } = bgRenderRectRef.current
-        const endCenterX = dx + dw - PIP_RENDER_WIDTH * 0.4
+        const progress = Math.min(1, walkElapsed / LEVEL5_WALK_MS)
+        const tile = startTile + (endTile - startTile) * progress
+        walkFrameIndexRef.current = Math.floor((walkElapsed / 1000) * LEVEL5_WALK_FPS)
+        const count = Math.min(endTile, Math.floor(progress * endTile))
+        if (count !== lastCount) { lastCount = count; setRunMovedTiles(count) }
 
-        const elapsed = now - runStart
-        const progress = Math.min(1, elapsed / LEVEL_THREE_RUN_MS)
-        const eased = progress < 0.5
-          ? 2 * progress * progress
-          : 1 - Math.pow(-2 * progress + 2, 2) / 2
-        const centerX = startCenterX + (endCenterX - startCenterX) * eased
-
-        const fadeProgress = Math.max(0, (eased - fadeStartFraction) / (1 - fadeStartFraction))
-        pipAlphaRef.current = 1 - fadeProgress
-
-        drawScene(ctx, pipX, Math.sin(progress * Math.PI * 10) * 2.5, false, 'run', 0, elapsed, pipAlphaRef.current, null, centerX)
+        drawScene(ctx, pipX, Math.sin(progress * Math.PI * 12) * 1.5, false, 'walk', 0, walkElapsed, 1, null, centerForTile(tile))
 
         if (progress < 1) {
-          raf.current = requestAnimationFrame(animateExit)
+          raf.current = requestAnimationFrame(animate)
           return
         }
 
-        pipAlphaRef.current = 0
+        pipX = endTile
+        pipXRef.current = endTile
+        lastPipX.current = endTile
+        currentTileRef.current = endTile
+        setPipX(endTile)
+        setRunMovedTiles(endTile)
         movementRunning.current = false
         setIsMoving(false)
-        setRunState('idle')
-        onResult && onResult({ events: [], code, error: null, finalX: pipX })
+        setRunState('success')
+        onResult && onResult({
+          events: [{ type: 'say', text: LEVEL5_BUBBLE_TEXT }],
+          code,
+          error: null,
+          finalX: pipX
+        })
         startIdleLoop()
       }
 
       setIsMoving(true)
-      raf.current = requestAnimationFrame(animateExit)
+      raf.current = requestAnimationFrame(animate)
       return () => {
         cancelled = true
         movementRunning.current = false
         if (raf.current) cancelAnimationFrame(raf.current)
       }
     }
-
       function step() {
         if (cancelled || executionVersion !== executionVersionRef.current) return
         if (i >= events.length) {
