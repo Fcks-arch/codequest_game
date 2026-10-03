@@ -35,7 +35,7 @@
     golemSprite:   '/assets/golem.png',
     gateSprite:    '/assets/gate.png',
     fireSprite: null,
-    bgMusic:       null,  // '/assets/music/theme.mp3'
+    bgMusic:       '/assets/music/bgmusic.mp3',
     sfxJump:       null,
     sfxCorrect:    null,
     sfxComplete:   null,
@@ -145,16 +145,55 @@
   }
 
   let bgAudio = null
+  const DEFAULT_MUSIC_VOLUME = 0.35
+
+  export function setBgMusicVolume(value) {
+    const volume = Math.max(0, Math.min(1, Number(value) || 0))
+
+    if (bgAudio) {
+      bgAudio.volume = volume
+    }
+
+    if (window && window._cqAudio) {
+      window._cqAudio.volume = volume
+    }
+
+    return volume
+  }
+
+  function unlockBgMusicOnUserGesture() {
+    if (!bgAudio) return
+    bgAudio.play().catch(() => {})
+  }
+
   export function startBgMusic() {
     if (!DEFAULT_ASSETS.bgMusic) return
-    if (bgAudio) { bgAudio.play(); return }
-    bgAudio = new Audio(DEFAULT_ASSETS.bgMusic)
-    bgAudio.loop   = true
-    bgAudio.volume = 0.35
+
+    if (!bgAudio) {
+      bgAudio = new Audio(DEFAULT_ASSETS.bgMusic)
+      bgAudio.loop = true
+      bgAudio.volume = DEFAULT_MUSIC_VOLUME
+      window._cqAudio = bgAudio
+
+      if (typeof document !== 'undefined') {
+        document.addEventListener('pointerdown', unlockBgMusicOnUserGesture, { once: true })
+        document.addEventListener('keydown', unlockBgMusicOnUserGesture, { once: true })
+      }
+    }
+
+    if (window._cqAudio) {
+      window._cqAudio.volume = DEFAULT_MUSIC_VOLUME
+    }
+
     bgAudio.play().catch(() => {})
-    window._cqAudio = bgAudio
   }
-  export function stopBgMusic() { bgAudio?.pause() }
+
+  export function stopBgMusic() {
+    bgAudio?.pause()
+    if (window && window._cqAudio) {
+      window._cqAudio.pause()
+    }
+  }
 
   function playSfx(src) {
     if (!src) return
@@ -179,8 +218,11 @@
   const BG_GRASS_FRACTION = TERRAIN1_BRIDGE_FRACTION
   const TERRAIN1_TILE_SCALE = 1.16
   const TERRAIN1_MAX_VISUAL_TILE = 9.25
-  const PIP_RENDER_WIDTH = 58
-  const PIP_RENDER_HEIGHT = 77
+  const MOBILE_LANDSCAPE_PIP_SCALE = typeof window !== 'undefined' && window.innerWidth > window.innerHeight && window.innerWidth <= 960 ? 0.5 : 1
+  const BASE_PIP_RENDER_WIDTH = 58
+  const BASE_PIP_RENDER_HEIGHT = 77
+  const PIP_RENDER_WIDTH = BASE_PIP_RENDER_WIDTH * MOBILE_LANDSCAPE_PIP_SCALE
+  const PIP_RENDER_HEIGHT = BASE_PIP_RENDER_HEIGHT * MOBILE_LANDSCAPE_PIP_SCALE
   const START_X = 50
   const WALK_SPEED = 1.2
   const WAYPOINT_TARGET_X = 620
