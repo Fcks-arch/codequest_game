@@ -293,13 +293,28 @@ const LEVEL5_SPARKS = Array.from({ length: 30 }, (_, i) => ({
   life: 0.6 + 0.5 * rnd(i + 91),                  // seconds per spark cycle
 }))
 
-function fillGlow(ctx, cx, cy, r, rgb, a) {
+function fillGlow(ctx, cx, cy, r, rgb, a) {z
   const g = ctx.createRadialGradient(cx, cy, 2, cx, cy, r)
   g.addColorStop(0, `rgba(${rgb}, ${a})`)
   g.addColorStop(1, `rgba(${rgb}, 0)`)
   ctx.fillStyle = g
   ctx.fillRect(cx - r, cy - r, r * 2, r * 2)
 }
+
+// ── Level 6: The Bug Chasm ──
+const LEVEL6_CODE = 'System.out.println("Bridge online");'
+const LEVEL6_BUBBLE_TEXT = 'Bridge online'
+const LEVEL6_END_TILE = 9
+const LEVEL6_BUBBLE_MS = 2200
+const LEVEL6_DECK_START_MS = 500
+const LEVEL6_DECK_STEP_MS = 110
+const LEVEL6_WALK_DELAY_MS = 2000
+const LEVEL6_WALK_MS = 2800
+const LEVEL6_WALK_FPS = 12
+// Positions as fractions of the background image (estimated from the art, so tune them)
+const LEVEL6_WHEEL = { x: 0.716, y: 0.418, r: 0.05 }   // Wheel Bridge's big gear (r = fraction of image height)
+const LEVEL6_RAMP = { x: 0.900, y: 0.430 }             // the jammed Chain Ramp
+const LEVEL6_DECK = { x0: 0.74, x1: 0.91, planks: 12 } // light bridge across the gap
 
 const walkMetricsCache = new WeakMap()
 function getWalkMetrics(img) {
@@ -355,7 +370,7 @@ function getWalkMetrics(img) {
   // rounds of bug reports turned out to be an old copy of this file still
   // being served (stale dev server, browser cache, or the new file not
   // actually saved to the right path) rather than the bug persisting.
-  const BUILD_TAG = 'GameCanvas 2026-09-30f (L5 intro: door, stairs, Pip scale)'
+  const BUILD_TAG = 'GameCanvas 2026-10-02a (L6 bridge: wheel, light deck, ramp jam)'
 
   export default function GameCanvas({ playToken, introToken = 0, replayToken = 0, onIntroComplete, code, onResult, onCharacterPosition, target, lessonData, resetToken = 0, fullHeight, levelLabel, levelTitle, initialPipPosition, eventOffset = 0, lessonId, executionMode = 'guided' }) {
     useEffect(() => { console.log('[CodeQuest]', BUILD_TAG) }, [])
@@ -437,7 +452,7 @@ function getWalkMetrics(img) {
     const executionVersionRef = useRef(0)
     const pipAlphaRef = useRef(1)
     const level5FxRef = useRef({ active: false, start: 0 })
-     
+    const level6FxRef = useRef({ solved: false, start: 0 })
 
     useEffect(() => {
       const img = new Image()
@@ -702,6 +717,7 @@ function getWalkMetrics(img) {
 
     function triggerCleanReset() {
       level5FxRef.current = { active: false, start: 0 }
+      level6FxRef.current = { solved: false, start: 0 }
       if (golemWakeTimeoutRef.current) {
         clearTimeout(golemWakeTimeoutRef.current)
         golemWakeTimeoutRef.current = null
@@ -1003,6 +1019,68 @@ function getWalkMetrics(img) {
     ctx.restore()
   }
 
+    function drawLevel6Effects(ctx, now) {
+    const { dx, dy, dw, dh } = bgRenderRectRef.current
+    if (!dw) return
+    const fx = level6FxRef.current
+    const t = fx.solved ? now - fx.start : 0
+    const feet = groundLineRef.current
+
+    ctx.save()
+    ctx.globalCompositeOperation = 'lighter'
+
+    // Chain Ramp: starts, then jams over and over (the runtime-error machine)
+    const jam = (Math.floor(now / 170) % 6) < 2 ? 0.34 : 0.07
+    fillGlow(ctx, dx + dw * LEVEL6_RAMP.x, dy + dh * LEVEL6_RAMP.y, dh * 0.12, '255, 80, 50', jam)
+
+    // Wheel Bridge
+    const wx = dx + dw * LEVEL6_WHEEL.x
+    const wy = dy + dh * LEVEL6_WHEEL.y
+    const wr = dh * LEVEL6_WHEEL.r
+
+    if (!fx.solved) {
+      // won't start: weak amber flicker
+      const twitch = (Math.floor(now / 90) % 11) === 0 ? 0.12 : 0
+      fillGlow(ctx, wx, wy, wr * 2.2, '255, 170, 60', 0.12 + 0.08 * Math.sin(now / 230) + twitch)
+    } else {
+      const ramp = Math.min(1, t / 700)
+      const pulse = 0.85 + Math.sin(now / 160) * 0.1
+      fillGlow(ctx, wx, wy, wr * 2.6, '0, 240, 255', 0.5 * ramp * pulse)
+
+      // spinning rune ring, speeding up
+      const angle = (t / 1000) * 3 * Math.min(1, t / 1500)
+      ctx.lineWidth = Math.max(2, wr * 0.12)
+      ctx.strokeStyle = `rgba(120, 240, 255, ${0.8 * ramp})`
+      for (let k = 0; k < 12; k++) {
+        const a0 = angle + (k / 12) * Math.PI * 2
+        ctx.beginPath()
+        ctx.arc(wx, wy, wr * 1.25, a0, a0 + 0.32)
+        ctx.stroke()
+      }
+
+      // light deck: planks switch on left to right across the gap
+      const n = LEVEL6_DECK.planks
+      const x0 = dx + dw * LEVEL6_DECK.x0
+      const x1 = dx + dw * LEVEL6_DECK.x1
+      const pw = (x1 - x0) / n
+      const ph = Math.max(4, dh * 0.014)
+      for (let i = 0; i < n; i++) {
+        const litAt = LEVEL6_DECK_START_MS + i * LEVEL6_DECK_STEP_MS
+        if (t < litAt) continue
+        const age = t - litAt
+        const flash = 1 + Math.max(0, 1 - age / 260) * 1.2
+        const a = Math.min(1, 0.55 * flash * (0.85 + Math.sin(now / 200 + i) * 0.1))
+        const px0 = Math.round(x0 + i * pw) + 1
+        ctx.fillStyle = `rgba(90, 225, 255, ${a})`
+        ctx.fillRect(px0, Math.round(feet), Math.ceil(pw) - 2, ph)
+        ctx.fillStyle = `rgba(200, 250, 255, ${a * 0.8})`
+        ctx.fillRect(px0, Math.round(feet), Math.ceil(pw) - 2, Math.max(1, Math.round(ph * 0.25)))
+      }
+    }
+
+    ctx.restore()
+  }
+
   function drawSceneInner(ctx, px, bounce, flagHit, pose, idleBob, animMs = 0, characterAlpha = 1, characterFeetY = null, characterCenterX = null) {
       const W = ctx.canvas.width
       const H = ctx.canvas.height
@@ -1235,6 +1313,7 @@ function getWalkMetrics(img) {
     ctx.restore()
   }
       if (currentLevel === 5) drawLevel5Effects(ctx, performance.now())
+      const isLocalLevelSixSuccess = currentLevel === 6 && normalizedCode === LEVEL6_CODE
       const pipScale = currentLevel === 5 ? LEVEL5_PIP_SCALE : 1
       const CW = PIP_RENDER_WIDTH * pipScale
       const movementRenderHeight = PIP_RENDER_HEIGHT * pipScale
@@ -1614,6 +1693,7 @@ function getWalkMetrics(img) {
       const isLocalLevelThreeSuccess = currentLevel === 3 && normalizedCode === LEVEL_THREE_CODE
       const isLocalLevelFourSuccess = currentLevel === 4 && isLevelFourSolution(code)
       const isLocalLevelFiveSuccess = currentLevel === 5 && normalizedCode === LEVEL5_KEYNAME_CODE
+      const isLocalLevelSixSuccess = currentLevel === 6 && normalizedCode === LEVEL6_CODE
 
       if (isLocalLevelThreeSuccess) {
         triggerFireIgnite()
@@ -1631,7 +1711,7 @@ function getWalkMetrics(img) {
         finalX: lastPipX.current
       })
       startIdleLoop()
-    } else if (!isLocalLevelTwoSuccess && !isLocalLevelThreeSuccess && !isLocalLevelFourSuccess && !isLocalLevelFiveSuccess) {
+    } else if (!isLocalLevelTwoSuccess && !isLocalLevelThreeSuccess && !isLocalLevelFourSuccess && !isLocalLevelFiveSuccess && !isLocalLevelSixSuccess) {
       runCodeInWorker(code, lessonId, undefined, executionMode).then(res => {
         if (cancelled || executionVersion !== executionVersionRef.current) return
         executionFinished = true
@@ -1935,6 +2015,88 @@ function getWalkMetrics(img) {
         if (raf.current) cancelAnimationFrame(raf.current)
       }
     }
+
+        if (isLocalLevelSixSuccess) {
+      executionFinished = true
+      const startTile = pipX
+      const endTile = LEVEL6_END_TILE
+      const tileTarget = Number(target) || endTile
+      const W = ctx.canvas.width
+      const tileW = W / Math.max(1, totalTiles)
+      const centerForTile = tile => Math.max(4, tileW * 0.04) + (tile + 0.5) * tileW
+      const fadeStartFraction = 0.85
+
+      const t0 = performance.now()
+      level6FxRef.current = { solved: true, start: t0 }
+
+      setBubble(LEVEL6_BUBBLE_TEXT)
+      setDialogueText('')
+      setBubbleOpacity(1)
+      setBubbleX(Math.round(centerForTile(startTile)))
+      setBubbleY(Math.round(groundLineRef.current - PIP_RENDER_HEIGHT - 15))
+
+      let bubbleFaded = false
+      let bubbleRemoved = false
+      let lastCount = -1
+
+      const animate = now => {
+        if (cancelled || executionVersion !== executionVersionRef.current) return
+        const elapsed = now - t0
+
+        if (!bubbleFaded && elapsed > LEVEL6_BUBBLE_MS - 500) { bubbleFaded = true; setBubbleOpacity(0) }
+        if (!bubbleRemoved && elapsed > LEVEL6_BUBBLE_MS) { bubbleRemoved = true; setBubble(null) }
+
+        const walkElapsed = elapsed - LEVEL6_WALK_DELAY_MS
+        if (walkElapsed < 0) {
+          pipAlphaRef.current = 1
+          drawScene(ctx, pipX, 0, false, 'idle', 0, now, 1)
+          raf.current = requestAnimationFrame(animate)
+          return
+        }
+
+        const progress = Math.min(1, walkElapsed / LEVEL6_WALK_MS)
+        const tile = startTile + (endTile - startTile) * progress
+        walkFrameIndexRef.current = Math.floor((walkElapsed / 1000) * LEVEL6_WALK_FPS)
+        const count = Math.min(tileTarget, Math.floor(progress * tileTarget))
+        if (count !== lastCount) { lastCount = count; setRunMovedTiles(count) }
+
+        const fade = Math.max(0, (progress - fadeStartFraction) / (1 - fadeStartFraction))
+        pipAlphaRef.current = 1 - fade
+        drawScene(ctx, pipX, Math.sin(progress * Math.PI * 10) * 1.5, false, 'walk', 0, walkElapsed, pipAlphaRef.current, null, centerForTile(tile))
+
+        if (progress < 1) {
+          raf.current = requestAnimationFrame(animate)
+          return
+        }
+
+        pipAlphaRef.current = 0
+        pipX = endTile
+        pipXRef.current = endTile
+        lastPipX.current = endTile
+        currentTileRef.current = endTile
+        setPipX(endTile)
+        setRunMovedTiles(tileTarget)
+        movementRunning.current = false
+        setIsMoving(false)
+        setRunState('success')
+        onResult && onResult({
+          events: [{ type: 'say', text: LEVEL6_BUBBLE_TEXT }],
+          code,
+          error: null,
+          finalX: pipX
+        })
+        startIdleLoop()
+      }
+
+      setIsMoving(true)
+      raf.current = requestAnimationFrame(animate)
+      return () => {
+        cancelled = true
+        movementRunning.current = false
+        if (raf.current) cancelAnimationFrame(raf.current)
+      }
+    }
+
       function step() {
         if (cancelled || executionVersion !== executionVersionRef.current) return
         if (i >= events.length) {

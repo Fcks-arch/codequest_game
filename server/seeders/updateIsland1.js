@@ -85,14 +85,14 @@ const lessons = [
 {
   title: 'The Bug Chasm',
   concept: 'Compile-Time vs Runtime Errors (Debugging)',
-  briefing: "Java can fail in two ways. A compile-time error means Java proofreads your instruction first and refuses to start, like a typo or a missing semicolon. A runtime error means it starts, then breaks while running, like a loop that never ends. The Wheel Bridge's panel shows this line, and Java rejects it: System.out.println(\"Bridge online\") Fix it to power the machine on.",
+  briefing: "Java can fail in two ways.\n\nCompile-time error: Java checks your code first and refuses to start, like a missing semicolon.\nRuntime error: the code starts, then breaks while running, like a loop that never ends.\n\nThe Wheel Bridge won't start. Its panel shows this line:\n\nSystem.out.println(\"Bridge online\")\n\nWhen it's fixed, the console prints: Bridge online",
   background_image: '/assets/landscapes/forge-level5.png',
-  ground_fraction: 0.69,   // same as Level 5
+  ground_fraction: 0.69,   // same value you use for Level 5
   initial_tile: 5,
   flag_tile: 9,
   solution_code: 'System.out.println("Bridge online");',
   tile_elevations: {},
-  guided_prompt: 'Which corrected line lets Java compile and print Bridge online?',
+  guided_prompt: 'Java refuses to compile this line. Which version fixes it?',
   options: ['System.out.println("Bridge online");', 'System.out.println("Bridge online")', 'System.ot.println("Bridge online");', 'system.out.println("Bridge online");'],
 },
 ]
