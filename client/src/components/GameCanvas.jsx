@@ -3,44 +3,44 @@ import { runCodeInWorker, terminateCodeWorker } from '../utils/runCodeInWorker'
 import pipIdleSrc from '../assets/pip-idle.png'
 import { C } from './UI'
 
-/*
-┌─────────────────────────────────────────────────────────────┐
-│  ASSET SLOTS                                                 │
-│                                                               │
-│  characterIdle/Walk/Run/Jump/Land each point to a sprite     │
-│  SHEET — multiple animation frames side-by-side in one PNG,  │
-│  not a single pose. FRAME_DATA below records the exact pixel │
-│  rect (x, y, w, h) of every frame in every sheet, so drawScene│
-│  can cut out and draw just one frame at a time instead of    │
-│  squashing the whole strip into the character's bounding box.│
-│                                                               │
-│  If you swap in new art:                                     │
-│  1. Put the file in client/public/assets/ (no spaces in the  │
-│     filename — spaces break image URLs in the browser).      │
-│  2. Re-measure its frames with process_sprites.py (also in   │
-│     this folder) and update FRAME_DATA to match.             │
-│  3. Keep files reasonably small — a sheet should be tens to   │
-│     a few hundred KB, not multiple MB.                       │
-└─────────────────────────────────────────────────────────────┘
-*/
-const DEFAULT_ASSETS = {
-  characterIdle: pipIdleSrc,
-  characterWalk: '/assets/pip-walking.png',
-  characterRun:  '/assets/pip-running.png',
-  characterJump: '/assets/pip-jumping.png',
-  characterLand: '/assets/pip-landing.png',
-  background:    '/assets/landscapes/terrain1.jpg',
-  groundTile:    null,  // '/assets/tile.png'
-  flagSprite:    null,  // '/assets/flag.png'
-  golemSprite:   '/assets/golem.png',
-  gateSprite:    '/assets/gate.png',
-  fireSprite: null,
-  bgMusic:       null,  // '/assets/music/theme.mp3'
-  sfxJump:       null,
-  sfxCorrect:    null,
-  sfxComplete:   null,
-}
-const FALLBACK_BACKGROUND = '/assets/background.png'
+  /*
+  ┌─────────────────────────────────────────────────────────────┐
+  │  ASSET SLOTS                                                 │
+  │                                                               │
+  │  characterIdle/Walk/Run/Jump/Land each point to a sprite     │
+  │  SHEET — multiple animation frames side-by-side in one PNG,  │
+  │  not a single pose. FRAME_DATA below records the exact pixel │
+  │  rect (x, y, w, h) of every frame in every sheet, so drawScene│
+  │  can cut out and draw just one frame at a time instead of    │
+  │  squashing the whole strip into the character's bounding box.│
+  │                                                               │
+  │  If you swap in new art:                                     │
+  │  1. Put the file in client/public/assets/ (no spaces in the  │
+  │     filename — spaces break image URLs in the browser).      │
+  │  2. Re-measure its frames with process_sprites.py (also in   │
+  │     this folder) and update FRAME_DATA to match.             │
+  │  3. Keep files reasonably small — a sheet should be tens to   │
+  │     a few hundred KB, not multiple MB.                       │
+  └─────────────────────────────────────────────────────────────┘
+  */
+  const DEFAULT_ASSETS = {
+    characterIdle: pipIdleSrc,
+    characterWalk: '/assets/pip-walking.png',
+    characterRun:  '/assets/pip-running.png',
+    characterJump: '/assets/pip-jumping.png',
+    characterLand: '/assets/pip-landing.png',
+    background:    '/assets/landscapes/terrain1.jpg',
+    groundTile:    null,  // '/assets/tile.png'
+    flagSprite:    null,  // '/assets/flag.png'
+    golemSprite:   '/assets/golem.png',
+    gateSprite:    '/assets/gate.png',
+    fireSprite: null,
+    bgMusic:       '/assets/music/bgmusic.mp3',
+    sfxJump:       null,
+    sfxCorrect:    null,
+    sfxComplete:   null,
+  }
+  const FALLBACK_BACKGROUND = '/assets/background.png'
 
 // Pixel rects of each frame within its sheet — measured directly from the
 // actual artwork (each frame's real non-transparent bounding box), not
@@ -142,17 +142,56 @@ function loadImg(src) {
   })
 }
 
-let bgAudio = null
-export function startBgMusic() {
-  if (!DEFAULT_ASSETS.bgMusic) return
-  if (bgAudio) { bgAudio.play(); return }
-  bgAudio = new Audio(DEFAULT_ASSETS.bgMusic)
-  bgAudio.loop   = true
-  bgAudio.volume = 0.35
-  bgAudio.play().catch(() => {})
-  window._cqAudio = bgAudio
-}
-export function stopBgMusic() { bgAudio?.pause() }
+  let bgAudio = null
+  const DEFAULT_MUSIC_VOLUME = 0.35
+
+  export function setBgMusicVolume(value) {
+    const volume = Math.max(0, Math.min(1, Number(value) || 0))
+
+    if (bgAudio) {
+      bgAudio.volume = volume
+    }
+
+    if (window && window._cqAudio) {
+      window._cqAudio.volume = volume
+    }
+
+    return volume
+  }
+
+  function unlockBgMusicOnUserGesture() {
+    if (!bgAudio) return
+    bgAudio.play().catch(() => {})
+  }
+
+  export function startBgMusic() {
+    if (!DEFAULT_ASSETS.bgMusic) return
+
+    if (!bgAudio) {
+      bgAudio = new Audio(DEFAULT_ASSETS.bgMusic)
+      bgAudio.loop = true
+      bgAudio.volume = DEFAULT_MUSIC_VOLUME
+      window._cqAudio = bgAudio
+
+      if (typeof document !== 'undefined') {
+        document.addEventListener('pointerdown', unlockBgMusicOnUserGesture, { once: true })
+        document.addEventListener('keydown', unlockBgMusicOnUserGesture, { once: true })
+      }
+    }
+
+    if (window._cqAudio) {
+      window._cqAudio.volume = DEFAULT_MUSIC_VOLUME
+    }
+
+    bgAudio.play().catch(() => {})
+  }
+
+  export function stopBgMusic() {
+    bgAudio?.pause()
+    if (window && window._cqAudio) {
+      window._cqAudio.pause()
+    }
+  }
 
 function playSfx(src) {
   if (!src) return
@@ -165,63 +204,69 @@ const DEFAULT_TILE_COUNT = 10
   without needing a separate game command. */
 const RUN_THRESHOLD = 3
 
-/* Default surface row used when a lesson does not provide ground_fraction.
-  (as a fraction of the image's full natural height) where the painted
-  grass path begins. The art has its own baked-in ground, so instead of
-  guessing at a scale/position we solve for whichever puts that exact
-  row under Pip's feet — see the background-drawing block below. If
-  you swap in a different background image, re-measure this (the top
-  edge of its walkable grass strip, as a fraction of total image
-  height) or the ground may float or sink relative to the character. */
-const TERRAIN1_BRIDGE_FRACTION = 0.655
-const BG_GRASS_FRACTION = TERRAIN1_BRIDGE_FRACTION
-const TERRAIN1_TILE_SCALE = 1.16
-const TERRAIN1_MAX_VISUAL_TILE = 9.25
-const PIP_RENDER_WIDTH = 58
-const PIP_RENDER_HEIGHT = 77
-const START_X = 50
-const WALK_SPEED = 1.2
-const GOLEM_DIALOGUE = 'Hello, Golem!'
-const GOLEM_FRAME_COUNT = 5
-const GOLEM_CORRECT_SNIPPET = 'System.out.println("Hello, Golem!");'
-const GOLEM_DORMANT = 'DORMANT'
-const GOLEM_WAKING = 'WAKING'
-const GOLEM_STANDING = 'STANDING'
-const LEVEL_TWO_CODE = 'int doorCode = 42;'
-const SHARED_START_FRACTION = 0.47
-const ENTRANCE_START_TILES = { 3: 0.5, 4: 0.5, 5: 1.0 }
-const GATE_FRAME_COUNT = 5
-const GATE_MAX_OPEN_FRAME = 3
-const GATE_SCALE = 1.0
-const DEBUG_GATE = false
-const GATE_VIS = { x0: 0.052, y0: 0.193, x1: 0.980, y1: 0.775 }
-const GATE_TARGET = { x0: 0.822, y0: 0.141, x1: 1.0, y1: 0.655 }
-const GOLEM_GAP = -8
-const GOLEM_PILLAR_LEFT_FRAC = 0.82
-const GATE_CONFIGS = {
-  default: { asset: '/assets/gate.png', vis: GATE_VIS, target: GATE_TARGET },
-}
-const FIRE_FRAME_COUNT = 15 // eslint-disable-line no-unused-vars
-const FIRE_IGNITE_MS = 110
-const FIRE_LAST_GROW_FRAME = 14   // frame 14 is a full, unclipped flame (ends at x=2163 of 2172)
-const FIRE_FLICKER_FRAMES = [12, 13, 14, 13]
-const FIRE_FLICKER_MS = 120
-const FIRE_FRAMES = [
-  { x: 35,   y: 503, w: 34,  h: 33  }, { x: 131,  y: 464, w: 42,  h: 76  },
-  { x: 226,  y: 434, w: 69,  h: 113 }, { x: 349,  y: 412, w: 80,  h: 135 },
-  { x: 476,  y: 378, w: 92,  h: 169 }, { x: 602,  y: 336, w: 108, h: 211 },
-  { x: 744,  y: 308, w: 121, h: 239 }, { x: 900,  y: 291, w: 129, h: 256 },
-  { x: 1049, y: 289, w: 133, h: 258 }, { x: 1202, y: 273, w: 136, h: 275 },
-  { x: 1357, y: 258, w: 144, h: 290 }, { x: 1518, y: 249, w: 149, h: 299 },
-  { x: 1681, y: 246, w: 151, h: 302 }, { x: 1844, y: 239, w: 155, h: 309 },
-  { x: 2012, y: 239, w: 151, h: 309 },
-]
-const FIRE_REF_H = 309            // tallest frame, so hFrac still means "full flame height"
-const FIRE_UNLIT = 'UNLIT'
-const FIRE_IGNITING = 'IGNITING'
-const FIRE_LIT = 'LIT'
-const LEVEL_THREE_CODE = 'int litLanterns = 0;'
-// Level 3: Pip stays put. This is how long the torches take to finish igniting.
+  /* Default surface row used when a lesson does not provide ground_fraction.
+    (as a fraction of the image's full natural height) where the painted
+    grass path begins. The art has its own baked-in ground, so instead of
+    guessing at a scale/position we solve for whichever puts that exact
+    row under Pip's feet — see the background-drawing block below. If
+    you swap in a different background image, re-measure this (the top
+    edge of its walkable grass strip, as a fraction of total image
+    height) or the ground may float or sink relative to the character. */
+  const TERRAIN1_BRIDGE_FRACTION = 0.655
+  const BG_GRASS_FRACTION = TERRAIN1_BRIDGE_FRACTION
+  const TERRAIN1_TILE_SCALE = 1.16
+  const TERRAIN1_MAX_VISUAL_TILE = 9.25
+  const MOBILE_LANDSCAPE_PIP_SCALE = typeof window !== 'undefined' && window.innerWidth > window.innerHeight && window.innerWidth <= 960 ? 0.5 : 1
+  const BASE_PIP_RENDER_WIDTH = 58
+  const BASE_PIP_RENDER_HEIGHT = 77
+  const PIP_RENDER_WIDTH = BASE_PIP_RENDER_WIDTH * MOBILE_LANDSCAPE_PIP_SCALE
+  const PIP_RENDER_HEIGHT = BASE_PIP_RENDER_HEIGHT * MOBILE_LANDSCAPE_PIP_SCALE
+  const START_X = 50
+  const WALK_SPEED = 1.2
+  const WAYPOINT_TARGET_X = 620
+  const GOLEM_DIALOGUE = 'Hello, Golem!'
+  const GOLEM_FRAME_COUNT = 5
+  const GOLEM_CORRECT_SNIPPET = 'System.out.println("Hello, Golem!");'
+  const GOLEM_DORMANT = 'DORMANT'
+  const GOLEM_WAKING = 'WAKING'
+  const GOLEM_STANDING = 'STANDING'
+  const LEVEL_TWO_CODE = 'int doorCode = 42;'
+  const SHARED_START_FRACTION = 0.47
+  const ENTRANCE_START_TILES = { 3: 0.5, 4: 0.5, 5: 1.0 }
+  const GATE_FRAME_COUNT = 5
+  const GATE_MAX_OPEN_FRAME = 3
+  const GATE_SCALE = 1.0
+  const DEBUG_GATE = false
+  const GATE_VIS = { x0: 0.052, y0: 0.193, x1: 0.980, y1: 0.775 }
+  const GATE_TARGET = { x0: 0.822, y0: 0.141, x1: 1.0, y1: 0.655 }
+  const GOLEM_GAP = -8
+  const GOLEM_PILLAR_LEFT_FRAC = 0.82
+  const GATE_CONFIGS = {
+    default: { asset: '/assets/gate.png', vis: GATE_VIS, target: GATE_TARGET },
+  }
+  const FIRE_FRAME_COUNT = 15
+  const FIRE_IGNITE_MS = 110
+  const FIRE_LAST_GROW_FRAME = 14   // frame 14 is a full, unclipped flame (ends at x=2163 of 2172)
+  const FIRE_FLICKER_FRAMES = [12, 13, 14, 13]
+  const FIRE_FLICKER_MS = 120
+  const FIRE_FRAMES = [
+    { x: 35,   y: 503, w: 34,  h: 33  }, { x: 131,  y: 464, w: 42,  h: 76  },
+    { x: 226,  y: 434, w: 69,  h: 113 }, { x: 349,  y: 412, w: 80,  h: 135 },
+    { x: 476,  y: 378, w: 92,  h: 169 }, { x: 602,  y: 336, w: 108, h: 211 },
+    { x: 744,  y: 308, w: 121, h: 239 }, { x: 900,  y: 291, w: 129, h: 256 },
+    { x: 1049, y: 289, w: 133, h: 258 }, { x: 1202, y: 273, w: 136, h: 275 },
+    { x: 1357, y: 258, w: 144, h: 290 }, { x: 1518, y: 249, w: 149, h: 299 },
+    { x: 1681, y: 246, w: 151, h: 302 }, { x: 1844, y: 239, w: 155, h: 309 },
+    { x: 2012, y: 239, w: 151, h: 309 },
+  ]
+  const FIRE_REF_H = 309            // tallest frame, so hFrac still means "full flame height"
+  const FIRE_UNLIT = 'UNLIT'
+  const FIRE_IGNITING = 'IGNITING'
+  const FIRE_LIT = 'LIT'
+  const LEVEL_THREE_CODE = 'int litLanterns = 0;'
+  // Tile whose visual position lands on the far-right edge of the bridge
+  // (getVisualTilePosition clamps at TERRAIN1_MAX_VISUAL_TILE).
+  // Level 3: Pip stays put. This is how long the torches take to finish igniting.
 const LEVEL_THREE_DONE_DELAY_MS = FIRE_IGNITE_MS * FIRE_LAST_GROW_FRAME + 200
 const FIRE_CONFIGS = {
   3: {

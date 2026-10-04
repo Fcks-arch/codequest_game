@@ -1519,6 +1519,12 @@ export default function LessonPage() {
   const [musicOn, setMusicOn] =
     useState(false)
 
+  const [musicSliderOpen, setMusicSliderOpen] =
+    useState(false)
+
+  const [musicVolume, setMusicVolume] =
+    useState(0.35)
+
   const [panelOpen, setPanelOpen] =
     useState(true)
 
@@ -2389,17 +2395,29 @@ const deathResolveRef = useRef(null)
      ========================================================= */
 
   const toggleMusic = () => {
+    const nextMusicOn = !musicOn
+    setMusicOn(nextMusicOn)
+    setMusicSliderOpen(nextMusicOn)
+
     if (window._cqAudio) {
-      if (window._cqAudio.paused) {
-        window._cqAudio.play()
+      if (nextMusicOn) {
+        window._cqAudio.volume = musicVolume
+        window._cqAudio.play().catch(() => {})
       } else {
         window._cqAudio.pause()
       }
     }
+  }
 
-    setMusicOn(
-      music => !music
-    )
+  const handleMusicVolumeChange = event => {
+    const nextVolume = Number(event.target.value) / 100
+    setMusicVolume(nextVolume)
+
+    if (window._cqAudio) {
+      window._cqAudio.volume = nextVolume
+    }
+
+    setMusicOn(nextVolume > 0.02)
   }
 
   /* =========================================================
@@ -2659,30 +2677,59 @@ const deathResolveRef = useRef(null)
           </Pill>
 
           {/* MUSIC */}
-          <button
-            type="button"
-            onClick={toggleMusic}
-            title="Toggle music"
+          <div
             style={{
-              background:
-                'rgba(255,255,255,0.07)',
-              border:
-                '1px solid rgba(255,255,255,0.1)',
-              borderRadius: 7,
-              width: 32,
-              height: 32,
-              cursor: 'pointer',
-              fontSize: 15,
               display: 'flex',
               alignItems: 'center',
-              justifyContent:
-                'center'
+              gap: 6,
+              background:
+                'transparent'
             }}
           >
-            {musicOn
-              ? '🎵'
-              : '🔇'}
-          </button>
+            <button
+              type="button"
+              onClick={toggleMusic}
+              title="Toggle music"
+              style={{
+                background:
+                  'rgba(255,255,255,0.07)',
+                border:
+                  '1px solid rgba(255,255,255,0.1)',
+                borderRadius: 7,
+                width: 30,
+                height: 30,
+                cursor: 'pointer',
+                fontSize: 13,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent:
+                  'center',
+                padding: 0
+              }}
+            >
+              {musicOn
+                ? '🎵'
+                : '🔇'}
+            </button>
+
+            {musicSliderOpen && (
+              <input
+                type="range"
+                min="0"
+                max="100"
+                value={Math.round(musicVolume * 100)}
+                onChange={handleMusicVolumeChange}
+                title="Music volume"
+                aria-label="Music volume"
+                style={{
+                  width: 58,
+                  accentColor: '#8b5cf6',
+                  height: 14,
+                  cursor: 'pointer'
+                }}
+              />
+            )}
+          </div>
 
           {/* PANEL */}
           <button
