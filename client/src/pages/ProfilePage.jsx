@@ -21,6 +21,7 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
+  const [rankInfo, setRankInfo] = useState({ rank: null, total: 0 })
   const fileInputRef = useRef(null)
 
   useEffect(() => {
@@ -34,6 +35,31 @@ export default function ProfilePage() {
       avatar_url: user.avatar_url || DEFAULT_AVATAR
     })
   }, [user])
+
+  // Fetch the real rank from the backend whenever the user (or their XP) changes
+  useEffect(() => {
+    if (!user) return
+    let cancelled = false
+
+    axios
+      .get('/api/progress/leaderboard')
+      .then(res => {
+        if (cancelled) return
+        const rows = Array.isArray(res.data) ? res.data : []
+        const index = rows.findIndex(row => row.id === user.id)
+        setRankInfo({
+          rank: index >= 0 ? index + 1 : null,
+          total: rows.length
+        })
+      })
+      .catch(() => {
+        if (!cancelled) setRankInfo({ rank: null, total: 0 })
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [user?.id, user?.xp])
 
   const initials = useMemo(() => {
     const source = form.name || user?.name || 'Student'
@@ -116,9 +142,9 @@ export default function ProfilePage() {
               ) : (
                 <div className="profile-avatar profile-avatar--fallback">{initials}</div>
               )}
-              <button 
-                type="button" 
-                className="profile-avatar-btn" 
+              <button
+                type="button"
+                className="profile-avatar-btn"
                 onClick={handleAvatarPick}
                 title="Change Avatar"
               >
@@ -145,7 +171,8 @@ export default function ProfilePage() {
                   <strong>{user?.level || 1}</strong> Level
                 </span>
                 <span>
-                  <strong>{user?.rank || '#--'}</strong> Rank
+                  <strong>{rankInfo.rank ? `#${rankInfo.rank}` : '#--'}</strong> Rank
+                  {rankInfo.total > 0 && <small> of {rankInfo.total}</small>}
                 </span>
               </div>
             </div>
