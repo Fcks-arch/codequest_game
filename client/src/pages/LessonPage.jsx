@@ -70,6 +70,11 @@ function getIslandRoute(lesson, location) {
     : '/quest'
 }
 
+// Island 3 has 20 levels (2 bosses x 10 levels each). Every other island has 10.
+function getIslandLevelCount(islandId) {
+  return Number(islandId) === 3 ? 20 : 10
+}
+
 function shuffle(arr) {
   const a = [...arr]
 
@@ -220,30 +225,226 @@ function NextLevelButton({
   )
 }
 
-function explainCodeLine(line, lesson) {
-  const code = String(line || '').trim()
+function parseJsonValue(value, fallback = null) {
+  if (value === null || value === undefined || value === '') return fallback
 
-  if (!code) return null
+  if (typeof value !== 'string') return value
 
-  if (
-    /^(?:int|let|const|String|double|float|long|boolean)\s+\w+\s*=/
-      .test(code)
-  ) {
-    return `${code} declares a typed variable value that can be reused later in the program.`
+  try {
+    return JSON.parse(value)
+  } catch (_) {
+    return fallback
+  }
+}
+
+function normalizeLineBreakdown(lesson) {
+  const raw =
+    lesson?.line_breakdown ??
+    lesson?.lineBreakdown ??
+    lesson?.line_breakdowns ??
+    null
+
+  const parsed = parseJsonValue(raw, raw)
+
+  if (!Array.isArray(parsed)) return []
+
+  return parsed
+    .map((item, index) => {
+      if (typeof item === 'string') {
+        return {
+          part: `Part ${index + 1}`,
+          explanation: item
+        }
+      }
+
+      if (!item || typeof item !== 'object') return null
+
+      const part = String(
+        item.part ??
+        item.code ??
+        item.line ??
+        item.label ??
+        ''
+      ).trim()
+
+      const explanation = String(
+        item.explanation ??
+        item.description ??
+        item.note ??
+        ''
+      ).trim()
+
+      if (!part && !explanation) return null
+
+      return {
+        part: part || `Part ${index + 1}`,
+        explanation: explanation || 'This part contributes to the lesson solution.'
+      }
+    })
+    .filter(Boolean)
+}
+
+function GenericCodeBreakdown({ code }) {
+  const lines = String(code || '')
+    .split('\\n')
+    .map(line => line.trim())
+    .filter(Boolean)
+
+  if (lines.length === 0) return null
+
+  return (
+    <div style={{ marginTop: 12 }}>
+      <div
+        style={{
+          fontSize: 10,
+          color: C.onyx400,
+          fontWeight: 700,
+          letterSpacing: '.05em',
+          marginBottom: 7
+        }}
+      >
+        CODE BREAKDOWN
+      </div>
+
+      {lines.map((line, index) => (
+        <div
+          key={`${line}-${index}`}
+          style={{
+            marginBottom: 7,
+            padding: '8px 9px',
+            background: C.onyx50,
+            border: `1px solid ${C.onyx100}`,
+            borderRadius: 8
+          }}
+        >
+          <div
+            style={{
+              fontFamily: "'JetBrains Mono',monospace",
+              fontSize: 11.5,
+              color: C.purple,
+              fontWeight: 700,
+              marginBottom: 3,
+              whiteSpace: 'pre-wrap'
+            }}
+          >
+            {line}
+          </div>
+          <div
+            style={{
+              fontSize: 11.5,
+              color: C.onyx600,
+              lineHeight: 1.5
+            }}
+          >
+            This line is part of the Java solution for this lesson.
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function LessonLineBreakdown({ lesson, code }) {
+  const breakdown = normalizeLineBreakdown(lesson)
+
+  if (breakdown.length === 0) {
+    return <GenericCodeBreakdown code={code} />
   }
 
-  return `${code} runs as the next Java statement in the lesson.`
+  return (
+    <div style={{ marginTop: 14 }}>
+      <div
+        style={{
+          fontSize: 10,
+          color: C.onyx400,
+          fontWeight: 700,
+          letterSpacing: '.05em',
+          marginBottom: 8
+        }}
+      >
+        LINE BREAKDOWN
+      </div>
+
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 7
+        }}
+      >
+        {breakdown.map((item, index) => (
+          <div
+            key={`${item.part}-${index}`}
+            style={{
+              padding: '9px 10px',
+              background: '#F8FAFC',
+              border: `1px solid ${C.onyx100}`,
+              borderRadius: 9
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: 8
+              }}
+            >
+              <div
+                style={{
+                  width: 20,
+                  height: 20,
+                  minWidth: 20,
+                  borderRadius: 6,
+                  background: C.purpleLight,
+                  color: C.purple,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 10,
+                  fontWeight: 800
+                }}
+              >
+                {index + 1}
+              </div>
+
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div
+                  style={{
+                    fontFamily: "'JetBrains Mono',monospace",
+                    fontSize: 11.5,
+                    fontWeight: 700,
+                    color: C.onyx,
+                    lineHeight: 1.45,
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word'
+                  }}
+                >
+                  {item.part}
+                </div>
+
+                <div
+                  style={{
+                    marginTop: 3,
+                    fontSize: 11.5,
+                    color: C.onyx600,
+                    lineHeight: 1.55
+                  }}
+                >
+                  {item.explanation}
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 function CompletionReview({ lesson, code }) {
   const selectedCode =
     String(code || '').trim() ||
     '// No code was captured for this completion.'
-
-  const codeBreakdown = selectedCode
-    .split('\n')
-    .map(line => explainCodeLine(line, lesson))
-    .filter(Boolean)
 
   return (
     <div style={{ marginTop: 14 }}>
@@ -285,36 +486,10 @@ function CompletionReview({ lesson, code }) {
         </pre>
       </div>
 
-      <div style={{ marginTop: 12 }}>
-        <div
-          style={{
-            fontSize: 10,
-            color: C.onyx400,
-            fontWeight: 700,
-            letterSpacing: '.05em',
-            marginBottom: 7
-          }}
-        >
-          LINE-BY-LINE CODE BREAKDOWN
-        </div>
-
-        {codeBreakdown.map((explanation, index) => (
-          <p
-            key={index}
-            style={{
-              margin: '0 0 6px',
-              fontSize: 12,
-              color: C.onyx600,
-              lineHeight: 1.5
-            }}
-          >
-            <b style={{ color: C.purple }}>
-              Line {index + 1}:
-            </b>{' '}
-            {explanation}
-          </p>
-        ))}
-      </div>
+      <LessonLineBreakdown
+        lesson={lesson}
+        code={selectedCode}
+      />
     </div>
   )
 }
@@ -1730,6 +1905,20 @@ const deathResolveRef = useRef(null)
         }
       }
 
+      let lineBreakdownData =
+        sourceLesson.line_breakdown ??
+        sourceLesson.lineBreakdown ??
+        []
+
+      if (typeof lineBreakdownData === 'string') {
+        try {
+          lineBreakdownData =
+            JSON.parse(lineBreakdownData)
+        } catch (_) {
+          lineBreakdownData = []
+        }
+      }
+
       setLesson({
         ...sourceLesson,
 
@@ -1745,6 +1934,10 @@ const deathResolveRef = useRef(null)
 
         concepts: Array.isArray(conceptsData)
           ? conceptsData
+          : [],
+
+        line_breakdown: Array.isArray(lineBreakdownData)
+          ? lineBreakdownData
           : [],
 
         initialCode:
@@ -2344,6 +2537,8 @@ const deathResolveRef = useRef(null)
 
   /* =========================================================
      NEXT LEVEL
+     Island 3 has 20 levels (boss 1 on level 10, boss 2 on
+     level 20). Only the LAST level of an island clears it.
      ========================================================= */
 
   const goToNext =
@@ -2367,7 +2562,12 @@ const deathResolveRef = useRef(null)
         ) ||
         activeIslandId
 
-      if (currentLevel === 10) {
+      const totalLevels =
+        getIslandLevelCount(
+          currentIslandId
+        )
+
+      if (currentLevel >= totalLevels) {
         setIslandCleared(true)
         return
       }
@@ -2375,19 +2575,17 @@ const deathResolveRef = useRef(null)
       const nextLevel =
         currentLevel + 1
 
-      if (nextLevel <= 10) {
-        navigate(
-          `/lesson/${nextLevel}?island=${currentIslandId}`,
-          {
-            state: {
-              islandId:
-                currentIslandId,
-              relativeLevel:
-                nextLevel
-            }
+      navigate(
+        `/lesson/${nextLevel}?island=${currentIslandId}`,
+        {
+          state: {
+            islandId:
+              currentIslandId,
+            relativeLevel:
+              nextLevel
           }
-        )
-      }
+        }
+      )
     }
 
   /* =========================================================
@@ -2467,6 +2665,17 @@ const deathResolveRef = useRef(null)
       </div>
     )
   }
+
+  /* Is this the last level of the island? (10, or 20 on Island 3) */
+  const currentLevelNumber = Number(
+    lesson.order_index ||
+      lesson.level_label?.match(/\d+/)?.[0] ||
+      relativeLevel
+  )
+
+  const isFinalLevel =
+    currentLevelNumber >=
+    getIslandLevelCount(activeIslandId)
 
   /* =========================================================
      PAGE
@@ -2780,7 +2989,7 @@ const deathResolveRef = useRef(null)
             flex: 1,
             position: 'relative',
             overflow: 'hidden',
-            minwidth: 0
+            minWidth: 0
           }}
         >
           <GameCanvas
@@ -2813,6 +3022,8 @@ const deathResolveRef = useRef(null)
                   ? 'coding'
                   : 'idle'
             }
+            onNextLevel={goToNext}
+            onIslandComplete={goToNext}
             fullHeight
           />
         </div>
@@ -2882,16 +3093,7 @@ const deathResolveRef = useRef(null)
                 completedCode={
                   completedCode
                 }
-                isFinalLevel={
-                  Number(
-                    lesson.order_index ||
-                      lesson.level_label
-                        ?.match(
-                          /\d+/
-                        )?.[0] ||
-                      lesson.id
-                  ) === 10
-                }
+                isFinalLevel={isFinalLevel}
               />
             )}
 
@@ -2929,16 +3131,7 @@ const deathResolveRef = useRef(null)
                 onResetCanvas={
                   resetCanvasForReplay
                 }
-                isFinalLevel={
-                  Number(
-                    lesson.order_index ||
-                      lesson.level_label
-                        ?.match(
-                          /\d+/
-                        )?.[0] ||
-                      lesson.id
-                  ) === 10
-                }
+                isFinalLevel={isFinalLevel}
               />
             )}
         </div>

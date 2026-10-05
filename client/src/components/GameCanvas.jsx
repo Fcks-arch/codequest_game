@@ -3,44 +3,44 @@ import { runCodeInWorker, terminateCodeWorker } from '../utils/runCodeInWorker'
 import pipIdleSrc from '../assets/pip-idle.png'
 import { C } from './UI'
 
-  /*
-  ┌─────────────────────────────────────────────────────────────┐
-  │  ASSET SLOTS                                                 │
-  │                                                               │
-  │  characterIdle/Walk/Run/Jump/Land each point to a sprite     │
-  │  SHEET — multiple animation frames side-by-side in one PNG,  │
-  │  not a single pose. FRAME_DATA below records the exact pixel │
-  │  rect (x, y, w, h) of every frame in every sheet, so drawScene│
-  │  can cut out and draw just one frame at a time instead of    │
-  │  squashing the whole strip into the character's bounding box.│
-  │                                                               │
-  │  If you swap in new art:                                     │
-  │  1. Put the file in client/public/assets/ (no spaces in the  │
-  │     filename — spaces break image URLs in the browser).      │
-  │  2. Re-measure its frames with process_sprites.py (also in   │
-  │     this folder) and update FRAME_DATA to match.             │
-  │  3. Keep files reasonably small — a sheet should be tens to   │
-  │     a few hundred KB, not multiple MB.                       │
-  └─────────────────────────────────────────────────────────────┘
-  */
-  const DEFAULT_ASSETS = {
-    characterIdle: pipIdleSrc,
-    characterWalk: '/assets/pip-walking.png',
-    characterRun:  '/assets/pip-running.png',
-    characterJump: '/assets/pip-jumping.png',
-    characterLand: '/assets/pip-landing.png',
-    background:    '/assets/landscapes/terrain1.jpg',
-    groundTile:    null,  // '/assets/tile.png'
-    flagSprite:    null,  // '/assets/flag.png'
-    golemSprite:   '/assets/golem.png',
-    gateSprite:    '/assets/gate.png',
-    fireSprite: null,
-    bgMusic:       '/assets/music/bgmusic.mp3',
-    sfxJump:       null,
-    sfxCorrect:    null,
-    sfxComplete:   null,
-  }
-  const FALLBACK_BACKGROUND = '/assets/background.png'
+/*
+┌─────────────────────────────────────────────────────────────┐
+│  ASSET SLOTS                                                 │
+│                                                               │
+│  characterIdle/Walk/Run/Jump/Land each point to a sprite     │
+│  SHEET — multiple animation frames side-by-side in one PNG,  │
+│  not a single pose. FRAME_DATA below records the exact pixel │
+│  rect (x, y, w, h) of every frame in every sheet, so drawScene│
+│  can cut out and draw just one frame at a time instead of    │
+│  squashing the whole strip into the character's bounding box.│
+│                                                               │
+│  If you swap in new art:                                     │
+│  1. Put the file in client/public/assets/ (no spaces in the  │
+│     filename — spaces break image URLs in the browser).      │
+│  2. Re-measure its frames with process_sprites.py (also in   │
+│     this folder) and update FRAME_DATA to match.             │
+│  3. Keep files reasonably small — a sheet should be tens to   │
+│     a few hundred KB, not multiple MB.                       │
+└─────────────────────────────────────────────────────────────┘
+*/
+const DEFAULT_ASSETS = {
+  characterIdle: pipIdleSrc,
+  characterWalk: '/assets/pip-walking.png',
+  characterRun:  '/assets/pip-running.png',
+  characterJump: '/assets/pip-jumping.png',
+  characterLand: '/assets/pip-landing.png',
+  background:    '/assets/landscapes/terrain1.jpg',
+  groundTile:    null,  // '/assets/tile.png'
+  flagSprite:    null,  // '/assets/flag.png'
+  golemSprite:   '/assets/golem.png',
+  gateSprite:    '/assets/gate.png',
+  fireSprite: null,
+  bgMusic:       '/assets/music/bgmusic.mp3',
+  sfxJump:       null,
+  sfxCorrect:    null,
+  sfxComplete:   null,
+}
+const FALLBACK_BACKGROUND = '/assets/background.png'
 
 // Pixel rects of each frame within its sheet — measured directly from the
 // actual artwork (each frame's real non-transparent bounding box), not
@@ -142,56 +142,56 @@ function loadImg(src) {
   })
 }
 
-  let bgAudio = null
-  const DEFAULT_MUSIC_VOLUME = 0.35
+let bgAudio = null
+const DEFAULT_MUSIC_VOLUME = 0.35
 
-  export function setBgMusicVolume(value) {
-    const volume = Math.max(0, Math.min(1, Number(value) || 0))
+export function setBgMusicVolume(value) {
+  const volume = Math.max(0, Math.min(1, Number(value) || 0))
 
-    if (bgAudio) {
-      bgAudio.volume = volume
-    }
-
-    if (window && window._cqAudio) {
-      window._cqAudio.volume = volume
-    }
-
-    return volume
+  if (bgAudio) {
+    bgAudio.volume = volume
   }
 
-  function unlockBgMusicOnUserGesture() {
-    if (!bgAudio) return
-    bgAudio.play().catch(() => {})
+  if (window && window._cqAudio) {
+    window._cqAudio.volume = volume
   }
 
-  export function startBgMusic() {
-    if (!DEFAULT_ASSETS.bgMusic) return
+  return volume
+}
 
-    if (!bgAudio) {
-      bgAudio = new Audio(DEFAULT_ASSETS.bgMusic)
-      bgAudio.loop = true
-      bgAudio.volume = DEFAULT_MUSIC_VOLUME
-      window._cqAudio = bgAudio
+function unlockBgMusicOnUserGesture() {
+  if (!bgAudio) return
+  bgAudio.play().catch(() => {})
+}
 
-      if (typeof document !== 'undefined') {
-        document.addEventListener('pointerdown', unlockBgMusicOnUserGesture, { once: true })
-        document.addEventListener('keydown', unlockBgMusicOnUserGesture, { once: true })
-      }
-    }
+export function startBgMusic() {
+  if (!DEFAULT_ASSETS.bgMusic) return
 
-    if (window._cqAudio) {
-      window._cqAudio.volume = DEFAULT_MUSIC_VOLUME
-    }
+  if (!bgAudio) {
+    bgAudio = new Audio(DEFAULT_ASSETS.bgMusic)
+    bgAudio.loop = true
+    bgAudio.volume = DEFAULT_MUSIC_VOLUME
+    window._cqAudio = bgAudio
 
-    bgAudio.play().catch(() => {})
-  }
-
-  export function stopBgMusic() {
-    bgAudio?.pause()
-    if (window && window._cqAudio) {
-      window._cqAudio.pause()
+    if (typeof document !== 'undefined') {
+      document.addEventListener('pointerdown', unlockBgMusicOnUserGesture, { once: true })
+      document.addEventListener('keydown', unlockBgMusicOnUserGesture, { once: true })
     }
   }
+
+  if (window._cqAudio) {
+    window._cqAudio.volume = DEFAULT_MUSIC_VOLUME
+  }
+
+  bgAudio.play().catch(() => {})
+}
+
+export function stopBgMusic() {
+  bgAudio?.pause()
+  if (window && window._cqAudio) {
+    window._cqAudio.pause()
+  }
+}
 
 function playSfx(src) {
   if (!src) return
@@ -204,69 +204,66 @@ const DEFAULT_TILE_COUNT = 10
   without needing a separate game command. */
 const RUN_THRESHOLD = 3
 
-  /* Default surface row used when a lesson does not provide ground_fraction.
-    (as a fraction of the image's full natural height) where the painted
-    grass path begins. The art has its own baked-in ground, so instead of
-    guessing at a scale/position we solve for whichever puts that exact
-    row under Pip's feet — see the background-drawing block below. If
-    you swap in a different background image, re-measure this (the top
-    edge of its walkable grass strip, as a fraction of total image
-    height) or the ground may float or sink relative to the character. */
-  const TERRAIN1_BRIDGE_FRACTION = 0.655
-  const BG_GRASS_FRACTION = TERRAIN1_BRIDGE_FRACTION
-  const TERRAIN1_TILE_SCALE = 1.16
-  const TERRAIN1_MAX_VISUAL_TILE = 9.25
-  const MOBILE_LANDSCAPE_PIP_SCALE = typeof window !== 'undefined' && window.innerWidth > window.innerHeight && window.innerWidth <= 960 ? 0.5 : 1
-  const BASE_PIP_RENDER_WIDTH = 58
-  const BASE_PIP_RENDER_HEIGHT = 77
-  const PIP_RENDER_WIDTH = BASE_PIP_RENDER_WIDTH * MOBILE_LANDSCAPE_PIP_SCALE
-  const PIP_RENDER_HEIGHT = BASE_PIP_RENDER_HEIGHT * MOBILE_LANDSCAPE_PIP_SCALE
-  const START_X = 50
-  const WALK_SPEED = 1.2
-  const WAYPOINT_TARGET_X = 620
-  const GOLEM_DIALOGUE = 'Hello, Golem!'
-  const GOLEM_FRAME_COUNT = 5
-  const GOLEM_CORRECT_SNIPPET = 'System.out.println("Hello, Golem!");'
-  const GOLEM_DORMANT = 'DORMANT'
-  const GOLEM_WAKING = 'WAKING'
-  const GOLEM_STANDING = 'STANDING'
-  const LEVEL_TWO_CODE = 'int doorCode = 42;'
-  const SHARED_START_FRACTION = 0.47
-  const ENTRANCE_START_TILES = { 3: 0.5, 4: 0.5, 5: 1.0 }
-  const GATE_FRAME_COUNT = 5
-  const GATE_MAX_OPEN_FRAME = 3
-  const GATE_SCALE = 1.0
-  const DEBUG_GATE = false
-  const GATE_VIS = { x0: 0.052, y0: 0.193, x1: 0.980, y1: 0.775 }
-  const GATE_TARGET = { x0: 0.822, y0: 0.141, x1: 1.0, y1: 0.655 }
-  const GOLEM_GAP = -8
-  const GOLEM_PILLAR_LEFT_FRAC = 0.82
-  const GATE_CONFIGS = {
-    default: { asset: '/assets/gate.png', vis: GATE_VIS, target: GATE_TARGET },
-  }
-  const FIRE_FRAME_COUNT = 15
-  const FIRE_IGNITE_MS = 110
-  const FIRE_LAST_GROW_FRAME = 14   // frame 14 is a full, unclipped flame (ends at x=2163 of 2172)
-  const FIRE_FLICKER_FRAMES = [12, 13, 14, 13]
-  const FIRE_FLICKER_MS = 120
-  const FIRE_FRAMES = [
-    { x: 35,   y: 503, w: 34,  h: 33  }, { x: 131,  y: 464, w: 42,  h: 76  },
-    { x: 226,  y: 434, w: 69,  h: 113 }, { x: 349,  y: 412, w: 80,  h: 135 },
-    { x: 476,  y: 378, w: 92,  h: 169 }, { x: 602,  y: 336, w: 108, h: 211 },
-    { x: 744,  y: 308, w: 121, h: 239 }, { x: 900,  y: 291, w: 129, h: 256 },
-    { x: 1049, y: 289, w: 133, h: 258 }, { x: 1202, y: 273, w: 136, h: 275 },
-    { x: 1357, y: 258, w: 144, h: 290 }, { x: 1518, y: 249, w: 149, h: 299 },
-    { x: 1681, y: 246, w: 151, h: 302 }, { x: 1844, y: 239, w: 155, h: 309 },
-    { x: 2012, y: 239, w: 151, h: 309 },
-  ]
-  const FIRE_REF_H = 309            // tallest frame, so hFrac still means "full flame height"
-  const FIRE_UNLIT = 'UNLIT'
-  const FIRE_IGNITING = 'IGNITING'
-  const FIRE_LIT = 'LIT'
-  const LEVEL_THREE_CODE = 'int litLanterns = 0;'
-  // Tile whose visual position lands on the far-right edge of the bridge
-  // (getVisualTilePosition clamps at TERRAIN1_MAX_VISUAL_TILE).
-  // Level 3: Pip stays put. This is how long the torches take to finish igniting.
+/* Default surface row used when a lesson does not provide ground_fraction.
+  (as a fraction of the image's full natural height) where the painted
+  grass path begins. The art has its own baked-in ground, so instead of
+  guessing at a scale/position we solve for whichever puts that exact
+  row under Pip's feet — see the background-drawing block below. If
+  you swap in a different background image, re-measure this (the top
+  edge of its walkable grass strip, as a fraction of total image
+  height) or the ground may float or sink relative to the character. */
+const TERRAIN1_BRIDGE_FRACTION = 0.655
+const BG_GRASS_FRACTION = TERRAIN1_BRIDGE_FRACTION
+const TERRAIN1_TILE_SCALE = 1.16
+const TERRAIN1_MAX_VISUAL_TILE = 9.25
+const MOBILE_LANDSCAPE_PIP_SCALE = typeof window !== 'undefined' && window.innerWidth > window.innerHeight && window.innerWidth <= 960 ? 0.5 : 1
+const BASE_PIP_RENDER_WIDTH = 58
+const BASE_PIP_RENDER_HEIGHT = 77
+const PIP_RENDER_WIDTH = BASE_PIP_RENDER_WIDTH * MOBILE_LANDSCAPE_PIP_SCALE
+const PIP_RENDER_HEIGHT = BASE_PIP_RENDER_HEIGHT * MOBILE_LANDSCAPE_PIP_SCALE
+const START_X = 50
+const WALK_SPEED = 1.2
+const GOLEM_DIALOGUE = 'Hello, Golem!'
+const GOLEM_FRAME_COUNT = 5
+const GOLEM_CORRECT_SNIPPET = 'System.out.println("Hello, Golem!");'
+const GOLEM_DORMANT = 'DORMANT'
+const GOLEM_WAKING = 'WAKING'
+const GOLEM_STANDING = 'STANDING'
+const LEVEL_TWO_CODE = 'int doorCode = 42;'
+const SHARED_START_FRACTION = 0.47
+const ENTRANCE_START_TILES = { 3: 0.5, 4: 0.5, 5: 1.0 }
+const GATE_FRAME_COUNT = 5
+const GATE_MAX_OPEN_FRAME = 3
+const GATE_SCALE = 1.0
+const DEBUG_GATE = false
+const GATE_VIS = { x0: 0.052, y0: 0.193, x1: 0.980, y1: 0.775 }
+const GATE_TARGET = { x0: 0.822, y0: 0.141, x1: 1.0, y1: 0.655 }
+const GOLEM_GAP = -8
+const GOLEM_PILLAR_LEFT_FRAC = 0.82
+const GATE_CONFIGS = {
+  default: { asset: '/assets/gate.png', vis: GATE_VIS, target: GATE_TARGET },
+}
+const FIRE_FRAME_COUNT = 15 // eslint-disable-line no-unused-vars
+const FIRE_IGNITE_MS = 110
+const FIRE_LAST_GROW_FRAME = 14   // frame 14 is a full, unclipped flame (ends at x=2163 of 2172)
+const FIRE_FLICKER_FRAMES = [12, 13, 14, 13]
+const FIRE_FLICKER_MS = 120
+const FIRE_FRAMES = [
+  { x: 35,   y: 503, w: 34,  h: 33  }, { x: 131,  y: 464, w: 42,  h: 76  },
+  { x: 226,  y: 434, w: 69,  h: 113 }, { x: 349,  y: 412, w: 80,  h: 135 },
+  { x: 476,  y: 378, w: 92,  h: 169 }, { x: 602,  y: 336, w: 108, h: 211 },
+  { x: 744,  y: 308, w: 121, h: 239 }, { x: 900,  y: 291, w: 129, h: 256 },
+  { x: 1049, y: 289, w: 133, h: 258 }, { x: 1202, y: 273, w: 136, h: 275 },
+  { x: 1357, y: 258, w: 144, h: 290 }, { x: 1518, y: 249, w: 149, h: 299 },
+  { x: 1681, y: 246, w: 151, h: 302 }, { x: 1844, y: 239, w: 155, h: 309 },
+  { x: 2012, y: 239, w: 151, h: 309 },
+]
+const FIRE_REF_H = 309            // tallest frame, so hFrac still means "full flame height"
+const FIRE_UNLIT = 'UNLIT'
+const FIRE_IGNITING = 'IGNITING'
+const FIRE_LIT = 'LIT'
+const LEVEL_THREE_CODE = 'int litLanterns = 0;'
+// Level 3: Pip stays put. This is how long the torches take to finish igniting.
 const LEVEL_THREE_DONE_DELAY_MS = FIRE_IGNITE_MS * FIRE_LAST_GROW_FRAME + 200
 const FIRE_CONFIGS = {
   3: {
@@ -302,7 +299,7 @@ function getVisualTilePosition(tile, totalTiles, backgroundPath) {
   )
 }
 
-// ── Island 2 only (module_id 2): generic "solution matched" scene ──
+// ── Islands 2 and 3 (module_id 2 and 3): generic "solution matched" scene ──
 // Island 1 has hand-built scenes (golem, torches, forge, bug chasm). Island 2 uses
 // island plays the plain map: when the learner's code matches the lesson's
 // solution_code, Pip shows the output in a bubble and walks to the flag tile.
@@ -311,11 +308,136 @@ const ISLAND_WALK_DELAY_MS = 1400
 const ISLAND_WALK_FPS = 12
 const ISLAND_ENTRANCE_MS = 1000   // Pip walks in from the left edge when a level loads
 
+// ── Island 3 boss fight ──
+// Island 3 is 20 levels and TWO bosses: levels 1-10 fight the Syntax Golem and
+// levels 11-20 fight the Literal Titan. Each correct answer takes 1 HP off the
+// current boss; each wrong answer makes the boss strike back (the lives
+// themselves are handled by the lesson page). Boss 1 falls on level 10, boss 2
+// on level 20, and only then is the island cleared.
+const BOSS_HP_PER_CHAPTER = 10      // 10 levels per boss, 1 HP per level
+const BOSS_TOTAL_LEVELS = 20        // 2 bosses x 10 levels
+const ISLAND3_FIRST_LESSON_ID = 119 // lessons 119-138
+const ISLAND3_LAST_LESSON_ID = ISLAND3_FIRST_LESSON_ID + BOSS_TOTAL_LEVELS - 1
+
+// Every correct answer makes Pip dash at the boss and hit it; every wrong answer
+// makes the boss strike back (the lives themselves are still handled by the lesson page).
+const DASH_MS = 380                 // Pip's run up to the boss
+const DASH_HIT_HOLD_MS = 220        // he stays pressed against the boss for the hit
+const DASH_RETREAT_MS = 450         // hop back to his spot
+const SLASH_FX_MS = 200             // impact flash
+const ENEMY_ATTACK_LOCK_MS = 1600   // ignore a second attack trigger for this long (no double animation)
+const BOSS_HIT_SHAKE_MS = 450
+const BOSS_BUBBLE_MS = 1800 // eslint-disable-line no-unused-vars
+const BOSS_DEFEAT_COLLAPSE_MS = 1400
+
+// ── Boss golem sheet: 2 rows x 8 frames. Row 1 = idle loop, row 2 = attack
+// (3 wind-up, slam, recoil, dust, recover, stand). Coordinates are in a
+// 1536x1024 reference and scale automatically if your file is a different size.
+// If the golem floats / sinks / clips a neighbouring frame, tune `feet`,
+// `top`, `bottom` and `cuts` below.
+const BOSS_SHEET_SRC = '/assets/golem-boss.png'
+const BOSS_SHEET_REF = { w: 1536, h: 1024 }
+const BOSS_STAND_H_REF = 245     // height of the standing golem in the sheet
+const BOSS_STAND_W_REF = 185
+const BOSS_ROWS = {
+  // top/bottom = crop band, feet = the y where his feet touch the ground,
+  // cuts = x boundaries between the 8 frames
+  idle:   { top: 205, bottom: 470, feet: 463, cuts: [20, 214, 403, 592, 782, 970, 1150, 1340, 1525] },
+  attack: { top: 552, bottom: 900, feet: 880, cuts: [20, 208, 398, 555, 760, 965, 1155, 1340, 1525] },
+}
+const BOSS_IDLE_FPS = 8
+const BOSS_ATTACK_FRAMES = 8
+const BOSS_ATTACK_FRAME_MS = 150
+const BOSS_ATTACK_MS = BOSS_ATTACK_FRAME_MS * BOSS_ATTACK_FRAMES   // 1200
+const BOSS_SLAM_AT = BOSS_ATTACK_FRAME_MS * 3                      // fist hits the ground on frame 4
+const BOSS_WAVE_MS = 520                                           // flight time of the thrown rock
+export const BOSS_HIT_DELAY_MS = BOSS_SLAM_AT + BOSS_WAVE_MS       // when Pip actually gets hit
+const BOSS_SFX_DELAY_MS = 100                                      // growl starts a bit into the wind-up so the thud lands on the slam
+
+// Golem attack sound. Drop your own file at the path below to use it. If the
+// file is missing, a growl + ground thud is synthesized with the Web Audio API.
+const BOSS_ATTACK_SFX = '/assets/sounds/golem-attack.wav'
+let bossAudioCtx = null
+function synthGolemRoar() {
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext
+    if (!AC) return
+    if (!bossAudioCtx) bossAudioCtx = new AC()
+    const ac = bossAudioCtx
+    if (ac.state === 'suspended') ac.resume()
+    const t0 = ac.currentTime
+    const master = ac.createGain()
+    master.gain.value = 0.9
+    master.connect(ac.destination)
+
+    // growl (wind-up)
+    const osc = ac.createOscillator()
+    osc.type = 'sawtooth'
+    osc.frequency.setValueAtTime(110, t0)
+    osc.frequency.exponentialRampToValueAtTime(48, t0 + 0.5)
+    const lp = ac.createBiquadFilter()
+    lp.type = 'lowpass'
+    lp.frequency.setValueAtTime(600, t0)
+    lp.frequency.exponentialRampToValueAtTime(140, t0 + 0.5)
+    const gg = ac.createGain()
+    gg.gain.setValueAtTime(0.0001, t0)
+    gg.gain.exponentialRampToValueAtTime(0.5, t0 + 0.06)
+    gg.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.6)
+    osc.connect(lp); lp.connect(gg); gg.connect(master)
+    osc.start(t0); osc.stop(t0 + 0.65)
+
+    // ground thud (lands on the slam)
+    const ts = t0 + 0.35
+    const thud = ac.createOscillator()
+    thud.type = 'sine'
+    thud.frequency.setValueAtTime(90, ts)
+    thud.frequency.exponentialRampToValueAtTime(30, ts + 0.35)
+    const tg = ac.createGain()
+    tg.gain.setValueAtTime(0.9, ts)
+    tg.gain.exponentialRampToValueAtTime(0.0001, ts + 0.4)
+    thud.connect(tg); tg.connect(master)
+    thud.start(ts); thud.stop(ts + 0.45)
+
+    // rubble
+    const len = Math.floor(ac.sampleRate * 0.4)
+    const buf = ac.createBuffer(1, len, ac.sampleRate)
+    const data = buf.getChannelData(0)
+    for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2)
+    const noise = ac.createBufferSource()
+    noise.buffer = buf
+    const nf = ac.createBiquadFilter()
+    nf.type = 'lowpass'
+    nf.frequency.value = 900
+    const ng = ac.createGain()
+    ng.gain.value = 0.5
+    noise.connect(nf); nf.connect(ng); ng.connect(master)
+    noise.start(ts)
+  } catch (_) { /* audio is optional */ }
+}
+function playGolemAttackSfx() {
+  let fellBack = false
+  const fallback = () => { if (!fellBack) { fellBack = true; synthGolemRoar() } }
+  try {
+    const a = new Audio(BOSS_ATTACK_SFX)
+    a.volume = 0.85
+    a.addEventListener('error', fallback)
+    a.play().catch(fallback)
+  } catch (_) { fallback() }
+}
+
+const newBossFx = () => ({
+  hitStart: -Infinity,     // when the boss is hit
+  attackStart: -Infinity,  // when the boss's counter-attack leaves
+  hurtStart: -Infinity,    // when Pip is hit
+  defeatStart: Infinity,   // when the boss starts to collapse
+  attackLockUntil: 0,
+})
+
 function getSolutionOutputText(src) {
   const code = String(src || '')
   // 1) println("...") -> show what the console would print
-  const printed = code.match(/System\.out\.println\(\s*"((?:[^"\\]|\\.)*)"\s*\)/)
-  if (printed) return printed[1]
+  const printed = [...code.matchAll(/System\.out\.println\(\s*"((?:[^"\\]|\\.)*)"\s*\)/g)].map(m => m[1])
+  if (printed.length) return printed.join('\n')
   // 2) a declaration -> show  name: value
   const decl = code.match(/^(?:final\s+)?(?:int|String|boolean|double|char|long)\s+(\w+)\s*=\s*([^;]+);/)
   if (decl) return `${decl[1]}: ${decl[2].trim()}`
@@ -377,6 +499,51 @@ const LEVEL6_WHEEL = { x: 0.716, y: 0.418, r: 0.05 }   // Wheel Bridge's big gea
 const LEVEL6_RAMP = { x: 0.900, y: 0.430 }             // the jammed Chain Ramp
 const LEVEL6_DECK = { x0: 0.74, x1: 0.91, planks: 12 } // light bridge across the gap
 
+// Finds the real (non-transparent) bounding box of every golem frame, so the
+// level 1-2 golem can be placed with his FEET on the ground. (No longer used by
+// the Island 3 boss, which has its own sheet with fixed rects, see BOSS_ROWS.)
+const golemMetricsCache = new WeakMap()
+function getGolemMetrics(img) { // eslint-disable-line no-unused-vars
+  if (!img || !img.naturalWidth) return null
+  if (golemMetricsCache.has(img)) return golemMetricsCache.get(img)
+  let result = null
+  try {
+    const W = img.naturalWidth
+    const H = img.naturalHeight
+    const fwF = W / GOLEM_FRAME_COUNT
+    const c = document.createElement('canvas')
+    c.width = W
+    c.height = H
+    const g = c.getContext('2d', { willReadFrequently: true })
+    g.drawImage(img, 0, 0)
+    const data = g.getImageData(0, 0, W, H).data
+    const frames = []
+    for (let f = 0; f < GOLEM_FRAME_COUNT; f++) {
+      const sx0 = Math.round(f * fwF)
+      const sx1 = Math.min(W, Math.round((f + 1) * fwF))
+      let x0 = Infinity, y0 = Infinity, x1 = -1, y1 = -1, count = 0
+      for (let y = 0; y < H; y++) {
+        for (let x = sx0; x < sx1; x++) {
+          if (data[(y * W + x) * 4 + 3] > 20) {
+            count++
+            const lx = x - Math.round(f * fwF)
+            if (lx < x0) x0 = lx
+            if (lx > x1) x1 = lx
+            if (y < y0) y0 = y
+            if (y > y1) y1 = y
+          }
+        }
+      }
+      frames.push(count > 50 ? { x0, y0, x1, y1 } : null)
+    }
+    result = { frames }
+  } catch (e) {
+    console.warn('Could not measure golem sheet:', e)
+  }
+  golemMetricsCache.set(img, result)
+  return result
+}
+
 const walkMetricsCache = new WeakMap()
 function getWalkMetrics(img) {
   if (!img || !img.naturalWidth) return null
@@ -431,9 +598,9 @@ function getWalkMetrics(img) {
 // rounds of bug reports turned out to be an old copy of this file still
 // being served (stale dev server, browser cache, or the new file not
 // actually saved to the right path) rather than the bug persisting.
-const BUILD_TAG = 'GameCanvas 2026-10-04a (island 2: entrance walk-in, generic scene, island gating)'
+const BUILD_TAG = 'GameCanvas 2026-10-05d (island 3: 20 levels, 2 bosses, island-clear events)'
 
-export default function GameCanvas({ playToken, introToken = 0, replayToken = 0, onIntroComplete, code, onResult, onCharacterPosition, target, lessonData, resetToken = 0, fullHeight, levelLabel, levelTitle, initialPipPosition, eventOffset = 0, lessonId, executionMode = 'guided' }) {
+export default function GameCanvas({ playToken, introToken = 0, replayToken = 0, onIntroComplete, code, onResult, onCharacterPosition, target, lessonData, resetToken = 0, fullHeight, levelLabel, levelTitle, initialPipPosition, eventOffset = 0, lessonId, executionMode = 'guided', hitToken = 0, onBossDefeated, onIslandComplete }) {
   useEffect(() => { console.log('[CodeQuest]', BUILD_TAG) }, [])
 
   const cvs    = useRef(null)
@@ -507,7 +674,9 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
   // level 2 was treated as Island 1's level 2, which starts in the middle.
   const lessonModuleId = Number(lessonData?.module_id)
   const lessonIdNum = Number(lessonId ?? lessonData?.id)
-  const isIsland2 = lessonModuleId === 2 || (lessonIdNum >= 109 && lessonIdNum <= 118)
+  const isIsland2 =
+    lessonModuleId === 2 || lessonModuleId === 3 ||
+    (lessonIdNum >= 109 && lessonIdNum <= ISLAND3_LAST_LESSON_ID)   // Island 2: 109-118, Island 3: 119-138
   const currentLevel = isIsland2
     ? 0
     : Number(
@@ -530,6 +699,40 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
           : (initialPipPosition || 0))
       : (initialPipPosition || 0))
   const skipsWalkCutscene = currentLevel !== 1
+
+  // Island 3 (module 3, lesson ids 119-138) is a boss fight with 20 levels and
+  // TWO bosses: levels 1-10 = Syntax Golem, levels 11-20 = Literal Titan.
+  const isBossIsland = lessonModuleId === 3 ||
+    (lessonIdNum >= ISLAND3_FIRST_LESSON_ID && lessonIdNum <= ISLAND3_LAST_LESSON_ID)
+  const bossCfgRaw = config?.boss || {}
+  // Level 1-20. Fall back to the lesson id if order_index isn't 1-20.
+  const rawOrder = Number(lessonData?.order_index)
+  const bossLevelNo = rawOrder >= 1 && rawOrder <= BOSS_TOTAL_LEVELS
+    ? rawOrder
+    : (lessonIdNum >= ISLAND3_FIRST_LESSON_ID && lessonIdNum <= ISLAND3_LAST_LESSON_ID
+        ? lessonIdNum - ISLAND3_FIRST_LESSON_ID + 1
+        : 1)
+  const bossChapter = bossLevelNo > BOSS_HP_PER_CHAPTER ? 1 : 0
+  const bossName = bossCfgRaw.name || (bossChapter === 0 ? 'Syntax Golem' : 'Literal Titan')
+  // HP is computed, not read from config, so a bad lesson row can't break the fight.
+  // Levels 1-10: 10 -> 0 (boss 1). Levels 11-20: 10 -> 0 (boss 2).
+  const bossMaxHp = BOSS_HP_PER_CHAPTER
+  const bossHpBefore = bossMaxHp - ((bossLevelNo - 1) % BOSS_HP_PER_CHAPTER)
+  const bossHpAfter = Math.max(0, bossHpBefore - 1)
+  const isChapterFinale = bossHpAfter <= 0                       // level 10 or 20
+  const isIslandFinale = bossLevelNo === BOSS_TOTAL_LEVELS       // level 20
+  const bossTint = bossCfgRaw.tint || (bossChapter === 1 ? 'hue-rotate(150deg) saturate(1.4)' : 'none')
+  const bossCfgRef = useRef({ enabled: false })
+  bossCfgRef.current = { enabled: isBossIsland, name: bossName, maxHp: bossMaxHp, hpAfter: bossHpAfter, tint: bossTint, finale: isIslandFinale }
+  const bossFxRef = useRef(newBossFx())
+  const bossGeomRef = useRef({ cx: 0, w: 0 })     // where the boss stands on the canvas (set while drawing); Pip dashes to it
+  const playBaselineRef = useRef(playToken)   // a Run/hit that is already counted when a level loads is stale, not a new action
+  const hitBaselineRef = useRef(hitToken)
+  const bossHpRef = useRef(bossHpBefore)         // HP shown on the bar (animated)
+  const bossHpTargetRef = useRef(bossHpBefore)   // HP the bar is moving towards
+  const popupsRef = useRef([])                    // floating "-1" texts
+  const [bossDefeated, setBossDefeated] = useState(false)
+  const [bossCongrats, setBossCongrats] = useState(null)   // { chapter, name, finale } shown after a boss falls
   const executionVersionRef = useRef(0)
   const pipAlphaRef = useRef(1)
   const level5FxRef = useRef({ active: false, start: 0 })
@@ -869,6 +1072,7 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
     background: getBackgroundImageForCurrentMap(),
     gateSprite: hasGate ? gateConfig.asset : null,
     fireSprite: fireConfig?.asset || null,
+    bossGolemSprite: isBossIsland ? BOSS_SHEET_SRC : null,
   }
 
   // Which lesson/run this position belongs to. The start position is immutable
@@ -1004,7 +1208,7 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
       }
     })
     return () => { cancelled = true }
-  }, [ASSETS.background, currentMap, currentLevel]) // eslint-disable-line
+  }, [ASSETS.background, currentMap, currentLevel, isBossIsland]) // eslint-disable-line
 
   function getGateRect(gateImg) {
     if (!gateImg || gateImg.naturalWidth <= 0 || gateImg.naturalHeight <= 0) return null
@@ -1525,10 +1729,331 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
     }
   }
 
-  // Wrapper so the vault overlay is always drawn LAST, even though the
-  // walk pose returns early from drawSceneInner.
+  // ── Island 3: boss, HP bar, shockwave, floating damage and hurt effects ──
+  // Drawn AFTER Pip, so it works even though the walk pose returns early
+  // from drawSceneInner.
+  function drawBossOverlay(ctx, now) {
+    const cfg = bossCfgRef.current
+    const W = ctx.canvas.width
+    const H = ctx.canvas.height
+    const { dx, dw } = bgRenderRectRef.current
+    const fx = bossFxRef.current
+    const feet = Number.isFinite(groundLineRef.current) && groundLineRef.current > 0
+      ? groundLineRef.current
+      : H * 0.72 - 26
+    const imgW = dw > 0 ? dw : W
+    const imgX = dw > 0 ? dx : 0
+
+    // HP bar glides towards its target
+    const targetHp = bossHpTargetRef.current
+    bossHpRef.current += (targetHp - bossHpRef.current) * 0.12
+    if (Math.abs(targetHp - bossHpRef.current) < 0.02) bossHpRef.current = targetHp
+    const hp = Math.max(0, bossHpRef.current)
+
+    const rr = (x, y, w, h, r) => {
+      ctx.beginPath()
+      if (ctx.roundRect) ctx.roundRect(x, y, w, h, r)
+      else ctx.rect(x, y, w, h)
+    }
+
+    // ---- boss geometry (new sheet, feet on the ground) ----
+    const sheet = imgs.current.bossGolemSprite
+    const SINK = 3                                   // feet sink this many px into the ground
+    const u = (H * 0.44) / BOSS_STAND_H_REF          // screen px per sheet px
+    const bossH = BOSS_STAND_H_REF * u
+    const bossW = BOSS_STAND_W_REF * u
+    const bossCx = imgX + imgW * 0.80
+    const bossY = feet + SINK - bossH
+    bossGeomRef.current = { cx: bossCx, w: bossW }   // Pip reads this to know where to dash to
+
+    const sinceHit = now - fx.hitStart
+    const sinceAttack = now - fx.attackStart
+    const sinceDefeat = now - fx.defeatStart
+    let shakeX = 0
+    if (sinceHit >= 0 && sinceHit < BOSS_HIT_SHAKE_MS) {
+      shakeX = Math.sin(sinceHit / 22) * 9 * (1 - sinceHit / BOSS_HIT_SHAKE_MS)
+    }
+    const flash = sinceHit >= 0 && sinceHit < 180
+
+    // Which frame? idle loop, attack sequence, or collapse on defeat
+    let rowKey = 'idle'
+    let frame = Math.floor(now / (1000 / BOSS_IDLE_FPS)) % 8
+    let alpha = 1
+    if (sinceDefeat >= 0) {
+      rowKey = 'attack'
+      const p = Math.min(1, sinceDefeat / BOSS_DEFEAT_COLLAPSE_MS)
+      frame = p < 0.34 ? 3 : p < 0.67 ? 4 : 5          // slam -> recoil -> kneeling in dust
+      if (sinceDefeat > BOSS_DEFEAT_COLLAPSE_MS) {
+        alpha = Math.max(0.3, 1 - (sinceDefeat - BOSS_DEFEAT_COLLAPSE_MS) / 1500)
+      }
+    } else if (sinceAttack >= 0 && sinceAttack < BOSS_ATTACK_MS) {
+      rowKey = 'attack'
+      frame = Math.min(BOSS_ATTACK_FRAMES - 1, Math.floor(sinceAttack / BOSS_ATTACK_FRAME_MS))
+    }
+
+    if (sheet && sheet.naturalWidth > 0) {
+      const row = BOSS_ROWS[rowKey]
+      const kx = sheet.naturalWidth / BOSS_SHEET_REF.w
+      const ky = sheet.naturalHeight / BOSS_SHEET_REF.h
+      const x0 = row.cuts[frame]
+      const x1 = row.cuts[frame + 1]
+      const dwF = (x1 - x0) * u
+      const dhF = (row.bottom - row.top) * u
+      const destX = bossCx - dwF / 2 + shakeX
+      const destY = feet + SINK - (row.feet - row.top) * u
+      ctx.save()
+      ctx.imageSmoothingEnabled = false
+      ctx.globalAlpha = alpha
+      const filters = []
+      if (cfg.tint && cfg.tint !== 'none') filters.push(cfg.tint)
+      if (flash) filters.push('brightness(2.4)')
+      if (filters.length) ctx.filter = filters.join(' ')
+      ctx.drawImage(
+        sheet,
+        x0 * kx, row.top * ky, (x1 - x0) * kx, (row.bottom - row.top) * ky,
+        Math.round(destX), Math.round(destY), dwF, dhF
+      )
+      ctx.restore()
+    }
+
+    // ---- HP bar ----
+    const barW = Math.max(150, Math.min(240, bossW * 1.25))
+    const barH = 14
+    const barX = bossCx - barW / 2
+    const barY = Math.max(24, bossY - 36)
+    ctx.save()
+    ctx.textAlign = 'center'
+    ctx.font = "700 12px 'JetBrains Mono', monospace"
+    ctx.fillStyle = '#fff'
+    ctx.shadowColor = 'rgba(0,0,0,0.7)'
+    ctx.shadowBlur = 4
+    ctx.fillText(String(cfg.name || 'Boss').toUpperCase(), bossCx, barY - 7)
+    ctx.shadowBlur = 0
+    ctx.fillStyle = 'rgba(15,23,42,0.88)'
+    rr(barX - 2, barY - 2, barW + 4, barH + 4, 8)
+    ctx.fill()
+    const ratio = Math.max(0, Math.min(1, hp / Math.max(1, cfg.maxHp)))
+    if (ratio > 0) {
+      const g = ctx.createLinearGradient(barX, 0, barX + barW, 0)
+      g.addColorStop(0, '#EF4444')
+      g.addColorStop(1, '#F97316')
+      ctx.fillStyle = g
+      rr(barX, barY, barW * ratio, barH, 6)
+      ctx.fill()
+    }
+    ctx.font = "700 10px 'JetBrains Mono', monospace"
+    ctx.fillStyle = '#fff'
+    ctx.fillText(`${Math.ceil(hp)} / ${cfg.maxHp}`, bossCx, barY + 11)
+    ctx.restore()
+
+    // ---- boss slam + ground shockwave, and Pip's melee impact flash ----
+    const routeTiles = Math.max(1, totalTiles)
+    const tileW = W / routeTiles
+    const pipTile = ((lastPipX.current % routeTiles) + routeTiles) % routeTiles
+    const pipCx = Math.max(4, tileW * 0.04) + (getVisualTilePosition(pipTile, routeTiles, bgPath) + 0.5) * tileW
+    const bossChest = { x: bossCx - bossW * 0.12, y: bossY + bossH * 0.45 }
+
+    // Slam: dust bursts where his fist lands and a chunk of rock is hurled at Pip.
+    const slamX = bossCx - bossW * 0.3
+    const slamY = feet - 6
+    const sinceSlam = sinceAttack - BOSS_SLAM_AT
+    if (sinceSlam >= 0 && sinceSlam < 450) {
+      const t = sinceSlam / 450
+      ctx.save()
+      for (let k = 0; k < 7; k++) {
+        const ang = -Math.PI * (0.1 + 0.8 * (k / 6))
+        const dist = t * bossH * 0.28 * (0.6 + (k % 3) * 0.25)
+        ctx.fillStyle = `rgba(150, 130, 105, ${0.5 * (1 - t)})`
+        ctx.beginPath()
+        ctx.arc(slamX + Math.cos(ang) * dist, slamY + Math.sin(ang) * dist, 6 + t * 14, 0, Math.PI * 2)
+        ctx.fill()
+      }
+      ctx.restore()
+    }
+
+    // A rock with stone body, lit facet and a patch of moss (matches the golem)
+    const drawRock = (x, y, size, rot, alpha = 1) => {
+      const pts = [[-1, -0.35], [-0.5, -0.95], [0.35, -0.85], [1, -0.3], [0.8, 0.55], [0.05, 0.95], [-0.8, 0.6]]
+      ctx.save()
+      ctx.translate(x, y)
+      ctx.rotate(rot)
+      ctx.globalAlpha = alpha
+      ctx.beginPath()
+      pts.forEach(([px, py], i) => (i ? ctx.lineTo(px * size, py * size) : ctx.moveTo(px * size, py * size)))
+      ctx.closePath()
+      ctx.fillStyle = '#6B5D4A'
+      ctx.fill()
+      ctx.lineJoin = 'round'
+      ctx.lineWidth = Math.max(2, size * 0.14)
+      ctx.strokeStyle = '#2E261C'
+      ctx.stroke()
+      ctx.fillStyle = '#8F7F66'
+      ctx.beginPath()
+      ctx.moveTo(-0.5 * size, -0.95 * size)
+      ctx.lineTo(0.35 * size, -0.85 * size)
+      ctx.lineTo(0.1 * size, -0.2 * size)
+      ctx.lineTo(-0.6 * size, -0.3 * size)
+      ctx.closePath()
+      ctx.fill()
+      ctx.fillStyle = '#5E8F2A'
+      ctx.beginPath()
+      ctx.moveTo(0.2 * size, 0.3 * size)
+      ctx.lineTo(0.75 * size, 0.5 * size)
+      ctx.lineTo(0.1 * size, 0.9 * size)
+      ctx.closePath()
+      ctx.fill()
+      ctx.restore()
+    }
+
+    const rockStart = fx.attackStart + BOSS_SLAM_AT
+    const rockT = (now - rockStart) / BOSS_WAVE_MS
+    const rockSize = Math.max(9, bossH * 0.085)
+    const rockFrom = { x: slamX, y: slamY - bossH * 0.1 }
+    const rockTo = { x: pipCx, y: feet - PIP_RENDER_HEIGHT * 0.5 }
+    const rockArc = bossH * 0.45
+    const rockAt = tt => ({
+      x: rockFrom.x + (rockTo.x - rockFrom.x) * tt,
+      y: rockFrom.y + (rockTo.y - rockFrom.y) * tt - Math.sin(tt * Math.PI) * rockArc
+    })
+    if (rockT >= 0 && rockT <= 1) {
+      // dusty trail behind the rock
+      ctx.save()
+      for (let k = 4; k >= 1; k--) {
+        const p = rockAt(Math.max(0, rockT - k * 0.05))
+        ctx.fillStyle = `rgba(150, 130, 105, ${0.35 * (1 - k / 5)})`
+        ctx.beginPath()
+        ctx.arc(p.x, p.y, rockSize * (0.5 - k * 0.07), 0, Math.PI * 2)
+        ctx.fill()
+      }
+      ctx.restore()
+      const p = rockAt(rockT)
+      drawRock(p.x, p.y, rockSize, rockT * Math.PI * 6)
+    }
+    // Impact: the rock bursts into small pieces on Pip
+    const sinceRock = now - (rockStart + BOSS_WAVE_MS)
+    if (sinceRock >= 0 && sinceRock < 320) {
+      const t = sinceRock / 320
+      for (let k = 0; k < 6; k++) {
+        const ang = -Math.PI * (0.05 + 0.9 * (k / 5))
+        const dist = t * rockSize * (2.2 + (k % 3) * 0.7)
+        drawRock(
+          rockTo.x + Math.cos(ang) * dist,
+          rockTo.y + Math.sin(ang) * dist + t * t * rockSize * 1.5,
+          rockSize * 0.35,
+          t * 6 + k,
+          1 - t
+        )
+      }
+    }
+
+    // Pip's melee impact: a quick white slash on the boss
+    const sinceSlash = now - fx.hitStart
+    if (sinceSlash >= 0 && sinceSlash < SLASH_FX_MS) {
+      const t = sinceSlash / SLASH_FX_MS
+      ctx.save()
+      ctx.globalCompositeOperation = 'lighter'
+      ctx.globalAlpha = 1 - t
+      ctx.strokeStyle = 'rgba(255,255,255,0.95)'
+      ctx.lineWidth = 6 - t * 4
+      ctx.lineCap = 'round'
+      const r = bossH * (0.18 + t * 0.12)
+      ctx.beginPath()
+      ctx.arc(bossChest.x, bossChest.y, r, Math.PI * 0.75, Math.PI * 1.45)
+      ctx.stroke()
+      ctx.restore()
+    }
+
+    // ---- floating damage numbers ----
+    popupsRef.current = popupsRef.current.filter(p => now - p.start < 1200)
+    popupsRef.current.forEach(p => {
+      const age = now - p.start
+      if (age < 0) return
+      const rise = age / 1200
+      const x = p.target === 'boss' ? bossCx : pipCx
+      const y0 = p.target === 'boss' ? bossY + bossH * 0.25 : feet - PIP_RENDER_HEIGHT - 12
+      ctx.save()
+      ctx.globalAlpha = Math.max(0, 1 - rise * rise)
+      ctx.font = "800 22px 'JetBrains Mono', monospace"
+      ctx.textAlign = 'center'
+      ctx.lineWidth = 4
+      ctx.strokeStyle = 'rgba(15,23,42,0.85)'
+      ctx.fillStyle = p.color
+      ctx.strokeText(p.text, x, y0 - rise * 46)
+      ctx.fillText(p.text, x, y0 - rise * 46)
+      ctx.restore()
+    })
+
+    // ---- Pip got hit: red vignette ----
+    const sinceHurt = now - fx.hurtStart
+    if (sinceHurt >= 0 && sinceHurt < 450) {
+      const a = 0.3 * (1 - sinceHurt / 450)
+      const vg = ctx.createRadialGradient(W / 2, H / 2, H * 0.25, W / 2, H / 2, Math.max(W, H) * 0.7)
+      vg.addColorStop(0, 'rgba(239,68,68,0)')
+      vg.addColorStop(1, `rgba(239,68,68,${a * 2})`)
+      ctx.fillStyle = vg
+      ctx.fillRect(0, 0, W, H)
+    }
+
+    // ---- victory banner ----
+    if (sinceDefeat >= 300) {
+      const t = sinceDefeat - 300
+      const a = t < 400 ? t / 400 : t > 3000 ? Math.max(0, 1 - (t - 3000) / 600) : 1
+      if (a > 0) {
+        ctx.save()
+        ctx.globalAlpha = a
+        ctx.textAlign = 'center'
+        ctx.font = "800 34px 'JetBrains Mono', monospace"
+        ctx.lineWidth = 6
+        ctx.strokeStyle = 'rgba(15,23,42,0.9)'
+        ctx.fillStyle = '#FBBF24'
+        const label = `${String(cfg.name || 'Boss').toUpperCase()} DEFEATED!`
+        ctx.strokeText(label, W / 2, H * 0.2)
+        ctx.fillText(label, W / 2, H * 0.2)
+        if (cfg.finale) {
+          ctx.font = "800 22px 'JetBrains Mono', monospace"
+          ctx.strokeText('ISLAND 3 CLEARED!', W / 2, H * 0.2 + 36)
+          ctx.fillText('ISLAND 3 CLEARED!', W / 2, H * 0.2 + 36)
+        }
+        ctx.restore()
+      }
+    }
+  }
+
+  // The boss slams the ground and the shockwave hits Pip. Safe to call twice:
+  // a second call inside the lock window is ignored, so there is never a
+  // double animation.
+  const triggerBossAttack = useCallback(() => {
+    const now = performance.now()
+    const fx = bossFxRef.current
+    if (now < fx.attackLockUntil) return false
+    fx.attackLockUntil = now + ENEMY_ATTACK_LOCK_MS
+    fx.attackStart = now
+    fx.hurtStart = now + BOSS_HIT_DELAY_MS     // Pip is hurt when the rock lands
+    popupsRef.current.push({ target: 'pip', text: '-1 \u2665', color: '#F87171', start: now + BOSS_HIT_DELAY_MS })
+    setTimeout(() => {
+      if (bossCfgRef.current.enabled) playGolemAttackSfx()
+    }, BOSS_SFX_DELAY_MS)
+    return true
+  }, [])
+
+  // Wrapper so the overlay is always drawn LAST, even though the walk pose
+  // returns early from drawSceneInner. On Island 3 it also shakes the screen
+  // when Pip is hit.
   function drawScene(...args) {
+    const ctx = args[0]
+    const boss = bossCfgRef.current.enabled
+    let shaken = false
+    if (boss) {
+      const sinceHurt = performance.now() - bossFxRef.current.hurtStart
+      if (sinceHurt >= 0 && sinceHurt < 380) {
+        ctx.save()
+        shaken = true
+        ctx.translate(Math.sin(sinceHurt / 18) * 7 * (1 - sinceHurt / 380), 0)
+      }
+    }
     drawSceneInner(...args)
+    if (boss) drawBossOverlay(ctx, performance.now())
+    if (shaken) ctx.restore()
   }
 
   drawSceneRef.current = drawScene
@@ -1622,6 +2147,51 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
       pipAlphaRef.current = 1
     }
   }, [introToken, currentLevel, assetsReady, lessonId, resetToken, replayToken]) // eslint-disable-line
+
+  // Island 3, NEW LEVEL: fresh boss effects, and remember the current tokens so a
+  // Run / lost-life that happened on the previous level cannot fire here (this was
+  // making the golem attack by itself when a level started).
+  useEffect(() => {
+    bossFxRef.current = newBossFx()
+    popupsRef.current = []
+    playBaselineRef.current = playToken
+    hitBaselineRef.current = hitToken
+  }, [lessonId, isBossIsland]) // eslint-disable-line
+
+  // Island 3, reset / replay / new level: the boss HP bar goes back to the HP he had
+  // before this level. The attack animation is NOT cleared here, so a reset right after
+  // a wrong answer no longer wipes the golem's counter-attack.
+  useEffect(() => {
+    bossHpRef.current = bossHpBefore
+    bossHpTargetRef.current = bossHpBefore
+    bossFxRef.current.defeatStart = Infinity
+    setBossDefeated(false)
+    setBossCongrats(null)
+  }, [lessonId, resetToken, replayToken, isBossIsland, bossHpBefore]) // eslint-disable-line
+
+  // The lesson page can bump hitToken each time the player loses a life, or fire
+  //   window.dispatchEvent(new Event('cq:life-lost'))
+  // The boss then strikes back.
+  useEffect(() => {
+    if (!hitToken || !isBossIsland || hitToken === hitBaselineRef.current) return
+    triggerBossAttack()
+  }, [hitToken]) // eslint-disable-line
+
+  // Tell PlayerDeath (which lives on the lesson page) that the boss is active, so a
+  // wrong answer makes the golem attack instead of playing the lightning strike.
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+    window.__cqBossIsland = !!isBossIsland
+    window.__cqBossHitDelay = BOSS_HIT_DELAY_MS
+    return () => { window.__cqBossIsland = false }
+  }, [isBossIsland])
+
+  useEffect(() => {
+    if (!isBossIsland) return undefined
+    const onLifeLost = () => triggerBossAttack()
+    window.addEventListener('cq:life-lost', onLifeLost)
+    return () => window.removeEventListener('cq:life-lost', onLifeLost)
+  }, [isBossIsland, triggerBossAttack])
 
   // Island 2 only: entrance. Every time a level loads, Pip walks in from the left
   // edge of the map and stops on his start tile (about one second), then idles.
@@ -1813,6 +2383,7 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
 
   useEffect(() => {
     if (playToken === 0) return
+    if (isBossIsland && playToken === playBaselineRef.current) return   // stale Run from a previous level
     entranceActiveRef.current = false   // Run pressed: stop any entrance still playing
     movementRunning.current = true
     stopIdleLoop()
@@ -1840,6 +2411,8 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
     // Island 2 only: the learner's code matches the lesson's stored solution_code
     const islandSolutionNorm = String(lessonData?.solution_code || '').replace(/\s+/g, ' ').trim()
     const isLocalIslandSuccess = isIsland2 && !!islandSolutionNorm && normalizedCode === islandSolutionNorm
+    // Island 3 (boss fight): anything that is not the solution is a wrong answer
+    const isBossWrong = isBossIsland && !isLocalIslandSuccess
 
     if (isLocalLevelThreeSuccess) {
       triggerFireIgnite()
@@ -1857,7 +2430,7 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
         finalX: lastPipX.current
       })
       startIdleLoop()
-    } else if (!isLocalLevelTwoSuccess && !isLocalLevelThreeSuccess && !isLocalLevelFourSuccess && !isLocalLevelFiveSuccess && !isLocalLevelSixSuccess && !isLocalIslandSuccess) {
+    } else if (!isLocalLevelTwoSuccess && !isLocalLevelThreeSuccess && !isLocalLevelFourSuccess && !isLocalLevelFiveSuccess && !isLocalLevelSixSuccess && !isLocalIslandSuccess && !isBossWrong) {
       runCodeInWorker(code, lessonId, undefined, executionMode).then(res => {
         if (cancelled || executionVersion !== executionVersionRef.current) return
         executionFinished = true
@@ -2244,6 +2817,165 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
       }
     }
 
+    // ── Island 3: correct answer -> Pip dashes at the boss, hits it, hops back ──
+    // Level 10 defeats boss 1 (Syntax Golem), level 20 defeats boss 2 (Literal Titan)
+    // and clears the island.
+    if (isLocalIslandSuccess && isBossIsland) {
+      executionFinished = true
+      pipAlphaRef.current = 1
+      const outText = getSolutionOutputText(lessonData?.solution_code)
+      const defeats = isChapterFinale
+
+      const BUBBLE_SHOW_MS = 1200
+      const DASH_AT = 1100
+      const IMPACT_AT = DASH_AT + DASH_MS
+      const RETREAT_AT = IMPACT_AT + DASH_HIT_HOLD_MS
+      const END_AT = defeats
+        ? IMPACT_AT + 450 + BOSS_DEFEAT_COLLAPSE_MS + 1100
+        : RETREAT_AT + DASH_RETREAT_MS + 400
+
+      // Where Pip stands now, and where he stops in front of the boss
+      const W = ctx.canvas.width
+      const routeTiles = Math.max(1, totalTiles)
+      const tileW = W / routeTiles
+      const localTile = ((pipX % routeTiles) + routeTiles) % routeTiles
+      const startCx = Math.max(4, tileW * 0.04) +
+        (getVisualTilePosition(localTile, routeTiles, bgPath) + 0.5) * tileW
+
+      setBubble(outText)
+      setDialogueText('')
+      setBubbleOpacity(1)
+      updateDialogueAnchor(pipX)
+
+      const t0 = performance.now()
+      const fxs = bossFxRef.current
+      let bubbleFaded = false
+      let bubbleRemoved = false
+      let impacted = false
+
+      const animateBoss = now => {
+        if (cancelled || executionVersion !== executionVersionRef.current) return
+        const elapsed = now - t0
+
+        if (!bubbleFaded && elapsed > BUBBLE_SHOW_MS - 500) { bubbleFaded = true; setBubbleOpacity(0) }
+        if (!bubbleRemoved && elapsed > BUBBLE_SHOW_MS) { bubbleRemoved = true; setBubble(null) }
+
+        // Stop just in front of the boss (read each frame, the boss geometry is measured while drawing)
+        const geom = bossGeomRef.current
+        const hitCx = Math.max(
+          startCx,
+          geom.cx > 0 ? geom.cx - geom.w * 0.5 - PIP_RENDER_WIDTH * 0.35 : W * 0.62
+        )
+
+        if (!impacted && elapsed >= IMPACT_AT) {
+          impacted = true
+          fxs.hitStart = now
+          bossHpTargetRef.current = Math.max(0, bossHpAfter)
+          popupsRef.current.push({ target: 'boss', text: '-1', color: '#FBBF24', start: now })
+          if (defeats) {
+            fxs.defeatStart = now + 450
+            setBossDefeated(true)
+          }
+        }
+
+        let pose = 'idle'
+        let cx = null
+        let feetY = null
+        let bounce = 0
+        let idleBob = Math.sin(now / 500) * 3
+        let animMs = now
+
+        if (elapsed >= DASH_AT && elapsed < IMPACT_AT) {
+          // dash in
+          const p = (elapsed - DASH_AT) / DASH_MS
+          const e = p * p                                   // accelerates into the hit
+          pose = 'run'
+          cx = startCx + (hitCx - startCx) * e
+          bounce = Math.sin(p * Math.PI * 6) * 2
+          idleBob = 0
+          animMs = elapsed - DASH_AT
+        } else if (elapsed >= IMPACT_AT && elapsed < RETREAT_AT) {
+          // strike: pressed against the boss with a small jab
+          pose = 'run'
+          cx = hitCx + Math.sin((elapsed - IMPACT_AT) / 30) * 3
+          idleBob = 0
+          animMs = elapsed - DASH_AT
+        } else if (elapsed >= RETREAT_AT && elapsed < RETREAT_AT + DASH_RETREAT_MS) {
+          // hop back to the starting spot
+          const p = (elapsed - RETREAT_AT) / DASH_RETREAT_MS
+          const e = 1 - Math.pow(1 - p, 2)
+          pose = 'jump'
+          cx = hitCx + (startCx - hitCx) * e
+          feetY = groundLineRef.current - Math.sin(p * Math.PI) * 40
+          idleBob = 0
+          animMs = elapsed - RETREAT_AT
+        }
+
+        drawScene(ctx, pipX, bounce, false, pose, idleBob, animMs, 1, feetY, cx)
+
+        if (elapsed < END_AT) {
+          raf.current = requestAnimationFrame(animateBoss)
+          return
+        }
+
+        movementRunning.current = false
+        setIsMoving(false)
+        setRunState('success')
+        onResult && onResult({
+          events: [{ type: 'say', text: outText }],
+          code,
+          error: null,
+          finalX: pipX,
+          boss: {
+            level: bossLevelNo,
+            chapter: bossChapter + 1,        // 1 or 2
+            name: bossName,
+            hpAfter: bossHpAfter,
+            defeated: defeats,
+            islandComplete: defeats && isIslandFinale,
+          },
+        })
+        if (defeats) setBossCongrats({ chapter: bossChapter + 1, name: bossName, finale: isIslandFinale })
+        if (defeats) onBossDefeated?.({ chapter: bossChapter + 1, name: bossName, level: bossLevelNo })
+        if (defeats && isIslandFinale) onIslandComplete?.()
+        startIdleLoop()
+      }
+
+      movementRunning.current = true
+      setIsMoving(true)
+      raf.current = requestAnimationFrame(animateBoss)
+      return () => {
+        cancelled = true
+        movementRunning.current = false
+        if (raf.current) cancelAnimationFrame(raf.current)
+      }
+    }
+
+    // ── Island 3: wrong answer -> the boss slams the ground (the lesson page takes the life) ──
+    if (isBossWrong) {
+      executionFinished = true
+      movementRunning.current = false
+      setIsMoving(false)
+
+      // Nothing typed or picked yet: that is not an answer, so no attack.
+      if (!normalizedCode) {
+        setRunState('idle')
+        startIdleLoop()
+        return () => { cancelled = true }
+      }
+
+      // The attack is driven by timestamps and drawn by the idle loop, so it plays
+      // even if the lesson page resets the level right away. We report the wrong
+      // answer immediately so the life is taken at the same moment.
+      const wrongMsg = `Wrong answer! The ${bossName} strikes back.`
+      triggerBossAttack()
+      setRunState('error')
+      setErrMsg(wrongMsg)
+      onResult && onResult({ events: [], code, error: wrongMsg })
+      startIdleLoop()
+      return () => { cancelled = true }
+    }
+
     // ── Island 2 only: generic scene. Correct code -> bubble with the output,
     //    then Pip walks to the lesson's flag tile.
     if (isLocalIslandSuccess) {
@@ -2511,7 +3243,7 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
 
   return (
     <div ref={wrap} style={{ position:'relative', width:'100%', height:'100%', minHeight: fullHeight ? '100%' : 320, background:'#C7D2F8', pointerEvents:'none' }}>
-      <div style={{
+      {!isBossIsland && <div style={{
         position:'absolute', top:14, left:14,
         display:'flex', alignItems:'center', gap:8,
         background:'rgba(15,23,42,0.56)', color:'#fff',
@@ -2522,11 +3254,11 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
       }}>
         <span style={{ opacity: 0.8 }}>Tiles</span>
         <span style={{ fontFamily:"'JetBrains Mono', monospace", fontSize:14 }}>{Math.max(0, runMovedTiles)} / {target || 3}</span>
-      </div>
+      </div>}
 
       {/* Map level indicator */}
       <div style={{
-        position:'absolute', top:14, left:140,
+        position:'absolute', top:14, left: isBossIsland ? 14 : 140,
         display:'flex', flexDirection:'column', gap:2,
         background:'rgba(79,70,229,0.56)', color:'#fff',
         border:'1px solid rgba(255,255,255,0.2)', borderRadius:12,
@@ -2568,6 +3300,39 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
           }} />
         </div>
       )}
+      {bossCongrats && (
+        <div style={{
+          position:'absolute', inset:0, zIndex:200,
+          display:'flex', alignItems:'center', justifyContent:'center',
+          background:'rgba(15,23,42,0.55)', pointerEvents:'auto'
+        }}>
+          <div className="toast-pop" style={{
+            background:'#fff', color:C.onyx, textAlign:'center',
+            padding:'28px 36px', borderRadius:20, maxWidth:360, width:'88%',
+            boxShadow:'0 20px 60px rgba(15,23,42,.45)', border:'3px solid #FBBF24'
+          }}>
+            <div style={{ fontSize:48, lineHeight:1 }}>{bossCongrats.finale ? '🏝️' : '🏆'}</div>
+            <div style={{ fontSize:22, fontWeight:800, marginTop:10 }}>Congratulations!</div>
+            <div style={{ fontSize:16, fontWeight:600, marginTop:8 }}>
+              {bossCongrats.finale
+                ? `You defeated the ${bossCongrats.name} and finished the final boss!`
+                : `You defeated the first boss, the ${bossCongrats.name}!`}
+            </div>
+            <div style={{ fontSize:14, marginTop:8, opacity:0.75 }}>
+              {bossCongrats.finale
+                ? 'Both bosses are down. Island 3 is cleared!'
+                : 'Boss 1 of 2 is down. Next up: the Literal Titan in levels 11–20.'}
+            </div>
+            <button
+              onClick={() => setBossCongrats(null)}
+              style={{
+                marginTop:18, padding:'10px 28px', borderRadius:12, border:'none',
+                background:C.emerald, color:'#fff', fontSize:15, fontWeight:700, cursor:'pointer'
+              }}
+            >Continue</button>
+          </div>
+        </div>
+      )}
       {runState === 'error' && (
         <div style={{
           position:'absolute', bottom:0, left:0, right:0,
@@ -2582,7 +3347,7 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
           background:C.emerald, color:'#fff',
           padding:'11px 20px', borderRadius:20, fontSize:15, fontWeight:700,
           boxShadow:'0 4px 20px rgba(34,197,94,.4)', pointerEvents:'none'
-        }}>🏁 Flag reached!</div>
+        }}>{isBossIsland ? (bossDefeated ? (isIslandFinale ? '🏝️ Island cleared!' : '🏆 Boss defeated!') : '💥 Direct hit!') : '🏁 Flag reached!'}</div>
       )}
     </div>
   )
