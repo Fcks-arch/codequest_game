@@ -35,6 +35,7 @@ import { C } from './UI'
     golemSprite:   '/assets/golem.png',
     gateSprite:    '/assets/gate.png',
     fireSprite: null,
+    librarianSprite: null,
     bgMusic:       '/assets/music/bgmusic.mp3',
     sfxJump:       null,
     sfxCorrect:    null,
@@ -216,11 +217,30 @@ const RUN_THRESHOLD = 3
   const BG_GRASS_FRACTION = TERRAIN1_BRIDGE_FRACTION
   const TERRAIN1_TILE_SCALE = 1.16
   const TERRAIN1_MAX_VISUAL_TILE = 9.25
-  const MOBILE_LANDSCAPE_PIP_SCALE = typeof window !== 'undefined' && window.innerWidth > window.innerHeight && window.innerWidth <= 960 ? 0.5 : 1
-  const BASE_PIP_RENDER_WIDTH = 58
-  const BASE_PIP_RENDER_HEIGHT = 77
-  const PIP_RENDER_WIDTH = BASE_PIP_RENDER_WIDTH * MOBILE_LANDSCAPE_PIP_SCALE
-  const PIP_RENDER_HEIGHT = BASE_PIP_RENDER_HEIGHT * MOBILE_LANDSCAPE_PIP_SCALE
+  const PIP_RENDER_WIDTH = 58
+const PIP_RENDER_HEIGHT = 77
+function pipScaleFor(canvasH) {
+  if (!Number.isFinite(canvasH) || canvasH >= 480) return 1
+  return Math.max(0.55, canvasH / 480)
+}
+const LIBRARIAN_FRAME_COUNT = 5
+const LIBRARIAN_BLOCK_FRAME = 0
+const LIBRARIAN_LAST_STEP_FRAME = 4
+const LIBRARIAN_STEP_MS = 180
+const LIBRARIAN_DORMANT = 'BLOCKING'
+const LIBRARIAN_STEPPING = 'STEPPING'
+const LIBRARIAN_ASIDE = 'ASIDE'
+const LIBRARIAN_HEIGHT_IN_PIPS = 2.6
+const LEVEL_SEVEN_CODE = '// Source code: Pip\'s ledger entry'
+const LEVEL7_GROUND_FRACTION = 0.712   // platform surface; +0.005 moves feet ~3px down
+const LIBRARIAN_ASIDE_SHIFT = 0.10     // how far (fraction of map width) the construct walks right when stepping aside
+const LEVEL7_STOP_TILE = 3.5           // where Pip stops, just left of the construct
+const LEVEL7_INTRO_MS = 4200           // ledge -> stairs -> walk to the stop tile
+const LEVEL7_WALK_MS = 4200            // walk across the platform after solving
+const LEVEL7_EXIT_X = 0.95             // where Pip fades out, as a fraction of map width
+// Ledge and stairs as fractions of the background image (estimated from the screenshot, tune to the art)
+const LEVEL7_LEDGE = { startX: 0.045, topX: 0.125, bottomX: 0.16, topY: 0.646, steps: 3 }
+const LIBRARIAN_CONFIGS = { 7: { asset: '/assets/construct.png', tileFraction: 0.5 } }
   const START_X = 50
   const WALK_SPEED = 1.2
   const WAYPOINT_TARGET_X = 620
@@ -232,7 +252,7 @@ const RUN_THRESHOLD = 3
   const GOLEM_STANDING = 'STANDING'
   const LEVEL_TWO_CODE = 'int doorCode = 42;'
   const SHARED_START_FRACTION = 0.47
-  const ENTRANCE_START_TILES = { 3: 0.5, 4: 0.5, 5: 1.0 }
+  const ENTRANCE_START_TILES = { 3: 0.5, 4: 0.5, 5: 1.0, 7: LEVEL7_STOP_TILE }
   const GATE_FRAME_COUNT = 5
   const GATE_MAX_OPEN_FRAME = 3
   const GATE_SCALE = 1.0
@@ -425,6 +445,59 @@ function getWalkMetrics(img) {
   return result
 }
 
+const librarianSheetCache = new WeakMap()
+function prepareLibrarianSheet(img, cols) {
+  if (!img || !img.naturalWidth) return null
+  if (librarianSheetCache.has(img)) return librarianSheetCache.get(img)
+  let result = null
+  try {
+    const W = img.naturalWidth, H = img.naturalHeight
+    const c = document.createElement('canvas')
+    c.width = W; c.height = H
+    const g = c.getContext('2d', { willReadFrequently: true })
+    g.drawImage(img, 0, 0)
+    const id = g.getImageData(0, 0, W, H)
+    const d = id.data
+    // strip a baked-in light/grey background (white, checkerboard, speckle)
+    if (d[3] > 200 && Math.min(d[0], d[1], d[2]) >= 190) {
+      for (let i = 0; i < d.length; i += 4) {
+        if (d[i + 3] === 0) continue
+        const mn = Math.min(d[i], d[i + 1], d[i + 2]), mx = Math.max(d[i], d[i + 1], d[i + 2])
+        if (mn >= 215 && mx - mn <= 16) d[i + 3] = 0
+      }
+      g.putImageData(id, 0, 0)
+    }
+    const cw = Math.floor(W / cols)
+    const boxes = []
+    let ux0 = Infinity, uy0 = Infinity, ux1 = -1, uy1 = -1
+    for (let f = 0; f < cols; f++) {
+      let x0 = Infinity, y0 = Infinity, x1 = -1, y1 = -1, n = 0
+      for (let y = 0; y < H; y++) {
+        const row = (y * W + f * cw) * 4
+        for (let x = 0; x < cw; x++) {
+          if (d[row + x * 4 + 3] > 20) {
+            n++
+            if (x < x0) x0 = x
+            if (x > x1) x1 = x
+            if (y < y0) y0 = y
+            if (y > y1) y1 = y
+          }
+        }
+      }
+      if (n > 50) {
+        boxes.push({ x0, y0, x1, y1 })
+        ux0 = Math.min(ux0, x0); uy0 = Math.min(uy0, y0)
+        ux1 = Math.max(ux1, x1); uy1 = Math.max(uy1, y1)
+      } else boxes.push(null)
+    }
+    if (boxes[0]) result = { canvas: c, cw, boxes, ub: { x: ux0, y: uy0, w: ux1 - ux0 + 1, h: uy1 - uy0 + 1 } }
+  } catch (e) {
+    console.warn('Could not prepare construct sheet:', e)
+  }
+  librarianSheetCache.set(img, result)
+  return result
+}
+
 // Bump this string whenever this file changes. Log it (see the mount
 // effect below) so a quick look at the browser console tells you for
 // certain whether the page is actually running this version — several
@@ -470,6 +543,9 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
   const fireStateRef = useRef(FIRE_UNLIT)
   const fireFrameRef = useRef(0)
   const fireIgniteTimerRef = useRef(null)
+  const librarianStateRef = useRef(LIBRARIAN_DORMANT)
+  const librarianFrameRef = useRef(LIBRARIAN_BLOCK_FRAME)
+  const librarianStepTimerRef = useRef(null)
   const drawSceneRef = useRef(null)
   const isCutsceneRunningRef = useRef(false)
   const [runState, setRunState] = useState('idle')
@@ -507,7 +583,9 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
   // level 2 was treated as Island 1's level 2, which starts in the middle.
   const lessonModuleId = Number(lessonData?.module_id)
   const lessonIdNum = Number(lessonId ?? lessonData?.id)
-  const isIsland2 = lessonModuleId === 2 || (lessonIdNum >= 109 && lessonIdNum <= 118)
+     const isIsland2 = lessonData?.module_id != null
+     ? lessonModuleId === 2
+     : (lessonIdNum >= 109 && lessonIdNum <= 118)
   const currentLevel = isIsland2
     ? 0
     : Number(
@@ -517,6 +595,7 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
       )
   const gateConfig = GATE_CONFIGS.default
   const fireConfig = FIRE_CONFIGS[currentLevel === 4 ? 3 : currentLevel] || null
+  const librarianConfig = LIBRARIAN_CONFIGS[currentLevel] || null
   const hasGate = currentLevel === 1
   const isLevelTwo = currentLevel === 2
   const usesSharedStart = currentLevel === 1 || isLevelTwo
@@ -607,7 +686,7 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
     const groundY = Number.isFinite(groundLineRef.current)
       ? groundLineRef.current
       : canvasH * 0.72 - 26
-    const pipHeadY = groundY - PIP_RENDER_HEIGHT * (currentLevel === 5 ? LEVEL5_PIP_SCALE : 1) - 15
+    const pipHeadY = groundY - PIP_RENDER_HEIGHT * pipScaleFor(canvasH) * (currentLevel === 5 ? LEVEL5_PIP_SCALE : 1) - 15
 
     setBubbleX(Math.round(pipCanvasX))
     setBubbleY(Math.round(pipHeadY))
@@ -694,6 +773,29 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
       redraw()
     }, FIRE_IGNITE_MS)
   }, [])
+
+  const triggerLibrarianStepAside = useCallback(() => {
+  if (librarianStateRef.current !== LIBRARIAN_DORMANT) return
+  if (librarianStepTimerRef.current) { clearInterval(librarianStepTimerRef.current); librarianStepTimerRef.current = null }
+  librarianStateRef.current = LIBRARIAN_STEPPING
+  librarianFrameRef.current = LIBRARIAN_BLOCK_FRAME
+  const redraw = () => {
+    if (cvs.current && drawSceneRef.current) {
+      drawSceneRef.current(cvs.current.getContext('2d'), lastPipX.current, 0, false, 'idle', 0, performance.now(), pipAlphaRef.current)
+    }
+  }
+  redraw()
+  librarianStepTimerRef.current = setInterval(() => {
+    librarianFrameRef.current += 1
+    if (librarianFrameRef.current >= LIBRARIAN_LAST_STEP_FRAME) {
+      librarianFrameRef.current = LIBRARIAN_LAST_STEP_FRAME
+      librarianStateRef.current = LIBRARIAN_ASIDE
+      clearInterval(librarianStepTimerRef.current)
+      librarianStepTimerRef.current = null
+    }
+    redraw()
+  }, LIBRARIAN_STEP_MS)
+}, [])
 
   const playCompletionSequence = useCallback(() => {
     updateDialogueAnchor(lastPipX.current)
@@ -824,6 +926,9 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
     }
     fireStateRef.current = currentLevel === 4 ? FIRE_LIT : FIRE_UNLIT
     fireFrameRef.current = currentLevel === 4 ? FIRE_LAST_GROW_FRAME : 0
+    if (librarianStepTimerRef.current) { clearInterval(librarianStepTimerRef.current); librarianStepTimerRef.current = null }
+librarianStateRef.current = LIBRARIAN_DORMANT
+librarianFrameRef.current = LIBRARIAN_BLOCK_FRAME
 
     if (cutsceneRef.current) cancelAnimationFrame(cutsceneRef.current)
     cutsceneRef.current = null
@@ -869,6 +974,7 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
     background: getBackgroundImageForCurrentMap(),
     gateSprite: hasGate ? gateConfig.asset : null,
     fireSprite: fireConfig?.asset || null,
+    librarianSprite: librarianConfig?.asset || null,
   }
 
   // Which lesson/run this position belongs to. The start position is immutable
@@ -922,6 +1028,9 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
     }
     fireStateRef.current = currentLevel === 4 ? FIRE_LIT : FIRE_UNLIT
     fireFrameRef.current = currentLevel === 4 ? FIRE_LAST_GROW_FRAME : 0
+    if (librarianStepTimerRef.current) { clearInterval(librarianStepTimerRef.current); librarianStepTimerRef.current = null }
+librarianStateRef.current = LIBRARIAN_DORMANT
+librarianFrameRef.current = LIBRARIAN_BLOCK_FRAME
     executionVersionRef.current += 1
     if (raf.current) cancelAnimationFrame(raf.current)
     if (idleRaf.current) cancelAnimationFrame(idleRaf.current)
@@ -1194,7 +1303,8 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
       ctx.fillStyle = '#17233B'
       ctx.fillRect(0, 0, W, H)
       ctx.drawImage(bg, dx, dy, dw, dh)
-      feetLine = dy + groundFraction * dh
+      const gf = currentLevel === 7 ? LEVEL7_GROUND_FRACTION : groundFraction
+feetLine = dy + gf * dh
       ctx.imageSmoothingEnabled = true
     } else {
       const sky = ctx.createLinearGradient(0, 0, 0, GY)
@@ -1323,6 +1433,25 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
       ctx.imageSmoothingEnabled = true
     }
 
+    const librarianSheet = librarianConfig ? prepareLibrarianSheet(imgs.current.librarianSprite, LIBRARIAN_FRAME_COUNT) : null
+if (librarianConfig && librarianSheet) {
+  const { dx, dw } = bgRenderRectRef.current
+  const { canvas: sheet, cw, boxes, ub } = librarianSheet
+  const b0 = boxes[0]
+  const scale = (PIP_RENDER_HEIGHT * pipScaleFor(H) * LIBRARIAN_HEIGHT_IN_PIPS) / (b0.y1 - b0.y0 + 1)
+  const cx0 = (b0.x0 + b0.x1 + 1) / 2
+  const by0 = b0.y1 + 1
+  const centerX = dx + dw * ((librarianConfig.tileFraction ?? 0.5) + LIBRARIAN_ASIDE_SHIFT * (Math.min(librarianFrameRef.current, LIBRARIAN_LAST_STEP_FRAME) / LIBRARIAN_LAST_STEP_FRAME))
+  const frame = Math.max(0, Math.min(LIBRARIAN_FRAME_COUNT - 1, librarianFrameRef.current))
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = 'high'
+  ctx.drawImage(
+    sheet,
+    frame * cw + ub.x, ub.y, ub.w, ub.h,
+    centerX + (ub.x - cx0) * scale, feetLine - (by0 - ub.y) * scale, ub.w * scale, ub.h * scale
+  )
+}
+
     const fireImg = imgs.current.fireSprite
     if (fireConfig && fireImg && fireImg.naturalWidth > 0 && fireImg.naturalHeight > 0 && fireStateRef.current !== FIRE_UNLIT) {
       const { dx, dy, dw, dh } = bgRenderRectRef.current
@@ -1393,8 +1522,9 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
       ctx.restore()
     }
     if (currentLevel === 5) drawLevel5Effects(ctx, performance.now())
+    if (currentLevel === 6) drawLevel6Effects(ctx, performance.now())
 
-    const pipScale = currentLevel === 5 ? LEVEL5_PIP_SCALE : 1
+    const pipScale = (currentLevel === 5 ? LEVEL5_PIP_SCALE : 1) * pipScaleFor(H)
     const CW = PIP_RENDER_WIDTH * pipScale
     const movementRenderHeight = PIP_RENDER_HEIGHT * pipScale
     const totalBob = bounce + idleBob
@@ -1623,6 +1753,87 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
     }
   }, [introToken, currentLevel, assetsReady, lessonId, resetToken, replayToken]) // eslint-disable-line
 
+    // Level 7 intro: Pip starts on the left ledge, walks down the steps, and stops in front of the construct
+  useEffect(() => {
+    if (currentLevel !== 7 || !assetsReady) return undefined
+    const ctx = cvs.current?.getContext('2d')
+    if (!ctx) return undefined
+
+    let cancelled = false
+    let frame = 0
+    let start = null
+
+    stopIdleLoop()
+    movementRunning.current = true
+    pipAlphaRef.current = 1
+    walkFrameIndexRef.current = 0
+    lastPipX.current = LEVEL7_STOP_TILE
+    currentTileRef.current = LEVEL7_STOP_TILE
+
+    const stairStep = t => {
+      const s = Math.min(1, Math.max(0, t)) * LEVEL7_LEDGE.steps
+      const i = Math.min(LEVEL7_LEDGE.steps - 1, Math.floor(s))
+      const u = Math.min(1, (s - i) / 0.4)
+      return (i + u * u * (3 - 2 * u)) / LEVEL7_LEDGE.steps
+    }
+
+    const finish = () => {
+      pipAlphaRef.current = 1
+      pipXRef.current = LEVEL7_STOP_TILE
+      lastPipX.current = LEVEL7_STOP_TILE
+      currentTileRef.current = LEVEL7_STOP_TILE
+      setPipX(LEVEL7_STOP_TILE)
+      movementRunning.current = false
+      walkFrameIndexRef.current = 0
+      startIdleLoop()
+      onIntroComplete?.()
+    }
+
+    const step = now => {
+      if (cancelled) return
+      if (librarianStateRef.current !== LIBRARIAN_DORMANT) { pipAlphaRef.current = 1; return }  // code already run
+      const { dx, dy, dw, dh } = bgRenderRectRef.current
+      if (!dw) { frame = requestAnimationFrame(step); return }
+      if (start === null) start = now
+
+      const elapsed = now - start
+      const p = Math.min(1, elapsed / LEVEL7_INTRO_MS)
+      const e = p * p * (3 - 2 * p)
+
+      const tileW = ctx.canvas.width / Math.max(1, totalTiles)
+      const xStop = Math.max(4, tileW * 0.04) + (LEVEL7_STOP_TILE + 0.5) * tileW
+      const xStart = dx + dw * LEVEL7_LEDGE.startX
+      const xTop = dx + dw * LEVEL7_LEDGE.topX
+      const xBottom = Math.min(dx + dw * LEVEL7_LEDGE.bottomX, xStop)
+      const yTop = dy + dh * LEVEL7_LEDGE.topY
+      const yGround = groundLineRef.current
+
+      const L1 = Math.max(1, xTop - xStart)
+      const L2 = Math.max(1, xBottom - xTop)
+      const d = e * Math.max(1, xStop - xStart)
+      const cx = xStart + d
+      const fy = d <= L1 ? yTop
+        : d <= L1 + L2 ? yTop + (yGround - yTop) * stairStep((d - L1) / L2)
+        : yGround
+
+      walkFrameIndexRef.current = Math.floor((elapsed / 1000) * 12)
+      const onStairs = d > L1 && d < L1 + L2
+      const bounce = onStairs ? 0 : Math.sin(elapsed / 110) * 1.2
+
+      drawScene(ctx, LEVEL7_STOP_TILE, bounce, false, 'walk', 0, elapsed, 1, fy, cx)
+
+      if (p < 1) { frame = requestAnimationFrame(step); return }
+      finish()
+    }
+
+    frame = requestAnimationFrame(step)
+    return () => {
+      cancelled = true
+      cancelAnimationFrame(frame)
+      movementRunning.current = false
+      pipAlphaRef.current = 1
+    }
+  }, [introToken, currentLevel, assetsReady, lessonId, resetToken, replayToken]) // eslint-disable-line
   // Island 2 only: entrance. Every time a level loads, Pip walks in from the left
   // edge of the map and stops on his start tile (about one second), then idles.
   useEffect(() => {
@@ -1688,7 +1899,7 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
   }, [introToken, assetsReady, lessonId, resetToken, replayToken, isIsland2, entranceStartTile]) // eslint-disable-line
 
   useEffect(() => {
-    if (currentLevel === 5 || isIsland2) return undefined
+    if (currentLevel === 5 || currentLevel === 7 || isIsland2) return undefined
     if (skipsWalkCutscene && !usesSharedStart) {
       pipXRef.current = entranceStartTile
       lastPipX.current = entranceStartTile
@@ -1837,6 +2048,7 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
     const isLocalLevelFourSuccess = currentLevel === 4 && isLevelFourSolution(code)
     const isLocalLevelFiveSuccess = currentLevel === 5 && normalizedCode === LEVEL5_KEYNAME_CODE
     const isLocalLevelSixSuccess = currentLevel === 6 && normalizedCode === LEVEL6_CODE
+    const isLocalLevelSevenSuccess = currentLevel === 7 && normalizedCode === LEVEL_SEVEN_CODE
     // Island 2 only: the learner's code matches the lesson's stored solution_code
     const islandSolutionNorm = String(lessonData?.solution_code || '').replace(/\s+/g, ' ').trim()
     const isLocalIslandSuccess = isIsland2 && !!islandSolutionNorm && normalizedCode === islandSolutionNorm
@@ -1844,6 +2056,7 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
     if (isLocalLevelThreeSuccess) {
       triggerFireIgnite()
     }
+    if (isLocalLevelSevenSuccess) triggerLibrarianStepAside()
 
     if (isLocalGolemSuccess) {
       executionFinished = true
@@ -1857,7 +2070,7 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
         finalX: lastPipX.current
       })
       startIdleLoop()
-    } else if (!isLocalLevelTwoSuccess && !isLocalLevelThreeSuccess && !isLocalLevelFourSuccess && !isLocalLevelFiveSuccess && !isLocalLevelSixSuccess && !isLocalIslandSuccess) {
+    } else if (!isLocalLevelTwoSuccess && !isLocalLevelThreeSuccess && !isLocalLevelFourSuccess && !isLocalLevelFiveSuccess && !isLocalLevelSixSuccess && !isLocalIslandSuccess && !isLocalLevelSevenSuccess) {
       runCodeInWorker(code, lessonId, undefined, executionMode).then(res => {
         if (cancelled || executionVersion !== executionVersionRef.current) return
         executionFinished = true
@@ -2232,6 +2445,69 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
           error: null,
           finalX: pipX
         })
+        startIdleLoop()
+      }
+
+      setIsMoving(true)
+      raf.current = requestAnimationFrame(animate)
+      return () => {
+        cancelled = true
+        movementRunning.current = false
+        if (raf.current) cancelAnimationFrame(raf.current)
+      }
+    }
+
+        if (isLocalLevelSevenSuccess) {
+      executionFinished = true
+      const startTile = pipX
+      const endTile = Math.max(startTile, totalTiles - 1)
+      const tileTarget = Number(target) || 5
+      const W = ctx.canvas.width
+      const tileW = W / Math.max(1, totalTiles)
+      const startCenterX = Math.max(4, tileW * 0.04) + (startTile + 0.5) * tileW
+      const { dx, dw } = bgRenderRectRef.current
+      const endCenterX = dx + dw * LEVEL7_EXIT_X
+      const WAIT_MS = LIBRARIAN_STEP_MS * LIBRARIAN_LAST_STEP_FRAME + 500
+      const fadeStartFraction = 0.85
+      const t0 = performance.now()
+      let lastCount = -1
+
+      const animate = now => {
+        if (cancelled || executionVersion !== executionVersionRef.current) return
+        const walkElapsed = now - t0 - WAIT_MS
+        if (walkElapsed < 0) {
+          pipAlphaRef.current = 1
+          drawScene(ctx, pipX, 0, false, 'idle', 0, now, 1)
+          raf.current = requestAnimationFrame(animate)
+          return
+        }
+
+        const progress = Math.min(1, walkElapsed / LEVEL7_WALK_MS)
+        const centerX = startCenterX + (endCenterX - startCenterX) * progress
+        walkFrameIndexRef.current = Math.floor((walkElapsed / 1000) * 12)
+        const count = Math.min(tileTarget, Math.floor(progress * tileTarget))
+        if (count !== lastCount) { lastCount = count; setRunMovedTiles(count) }
+
+        const fade = Math.max(0, (progress - fadeStartFraction) / (1 - fadeStartFraction))
+        pipAlphaRef.current = 1 - fade
+        drawScene(ctx, pipX, Math.sin(progress * Math.PI * 12) * 1.5, false, 'walk', 0, walkElapsed, pipAlphaRef.current, null, centerX)
+
+        if (progress < 1) {
+          raf.current = requestAnimationFrame(animate)
+          return
+        }
+
+        pipAlphaRef.current = 0
+        pipX = endTile
+        pipXRef.current = endTile
+        lastPipX.current = endTile
+        currentTileRef.current = endTile
+        setPipX(endTile)
+        setRunMovedTiles(tileTarget)
+        movementRunning.current = false
+        setIsMoving(false)
+        setRunState('success')
+        onResult && onResult({ events: [], code, error: null, finalX: pipX })
         startIdleLoop()
       }
 
