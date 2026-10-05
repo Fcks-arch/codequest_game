@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
 import axios from 'axios'
+import { clearLocallyCompletedLessonIds } from '../utils/GameStateManager'
 
 const AuthContext = createContext(null)
 
@@ -50,6 +51,7 @@ export function AuthProvider({ children }) {
 
   const register = async (name, email, password, section, role = 'student', teacherCode = '') => {
     const res = await axios.post('/api/auth/register', { name, email, password, section, role, teacherCode })
+    clearLocallyCompletedLessonIds(res.data.user.id)
     localStorage.setItem('cq_token', res.data.token)
     axios.defaults.headers.common['Authorization'] = `Bearer ${res.data.token}`
     setUser(res.data.user)
@@ -58,10 +60,11 @@ export function AuthProvider({ children }) {
 
   const loginWithGoogle = async (credential) => {
     const res = await axios.post('/api/auth/google', { credential })
+    if (res.data.newAccount) clearLocallyCompletedLessonIds(res.data.user.id)
     localStorage.setItem('cq_token', res.data.token)
     axios.defaults.headers.common['Authorization'] = `Bearer ${res.data.token}`
     setUser(res.data.user)
-    return res.data.user
+    return { ...res.data.user, newAccount: res.data.newAccount }
   }
 
   const logout = () => {

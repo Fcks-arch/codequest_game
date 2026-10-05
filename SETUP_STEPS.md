@@ -20,6 +20,7 @@ overwrite the matching files.
 - `server/controllers/authController.js` — `forgotPassword` / `resetPassword` handlers
 - `server/routes/index.js` — `POST /api/auth/forgot-password`, `POST /api/auth/reset-password`
 - `server/config/password-reset-migration.sql` — adds `reset_token`, `reset_token_expires` columns
+- `server/config/level-restart-xp-migration.sql` — tracks lesson XP rewards across island restarts
 
 **Login page redesign (medieval theme, matches HomePage)**
 - `client/src/pages/LoginPage.jsx` — rebuilt with castle background, parchment card, gold button
@@ -69,9 +70,10 @@ as an authorized JavaScript origin.
 cd server
 mysql -u root -p codequest < config/google-auth-migration.sql
 mysql -u root -p codequest < config/password-reset-migration.sql
+mysql -u root -p codequest < config/level-restart-xp-migration.sql
 ```
-(Skip these two if you're setting up the database fresh from `schema.sql` —
-it already includes both changes.)
+(Skip these migrations if you're setting up the database fresh from `schema.sql` —
+it already includes all three changes.)
 
 ### 5. Restart both dev servers
 Vite and Node only read `.env` at startup — stop and restart both:

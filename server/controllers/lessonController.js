@@ -1,5 +1,31 @@
 const db = require('../config/db')
 
+async function isLessonUnlocked(lesson, userId) {
+  const [rows] = await db.query(
+    `SELECT COUNT(*) AS locked_count
+     FROM lessons previous
+     JOIN lesson_modules previous_module ON previous_module.id = previous.module_id
+     JOIN lesson_modules target_module ON target_module.id = ?
+     WHERE previous.is_active = TRUE
+       AND previous_module.is_active = TRUE
+       AND (
+         previous_module.order_index < target_module.order_index OR
+         (previous_module.order_index = target_module.order_index AND (
+           previous.order_index < ? OR
+           (previous.order_index = ? AND previous.id < ?)
+         ))
+       )
+       AND NOT EXISTS (
+         SELECT 1 FROM student_progress sp
+         WHERE sp.lesson_id = previous.id
+           AND sp.user_id = ?
+           AND sp.phase = 'completed'
+       )`,
+    [lesson.module_id, lesson.order_index, lesson.order_index, lesson.id, userId]
+  )
+  return Number(rows[0]?.locked_count || 0) === 0
+}
+
 // GET /api/lessons — all active lessons with guided steps
 async function getLessons(req, res) {
   try {
@@ -16,6 +42,14 @@ async function getLessons(req, res) {
        ORDER BY lesson_modules.order_index, lessons.order_index`,
       hasLessonFilter ? [islandId, level] : []
     )
+
+    if (hasLessonFilter) {
+      for (const lesson of lessons) {
+        if (!(await isLessonUnlocked(lesson, req.user.id))) {
+          return res.status(403).json({ message: 'Complete earlier levels to unlock this level.' })
+        }
+      }
+    }
 
     for (const lesson of lessons) {
       const [steps] = await db.query(
@@ -85,13 +119,13 @@ async function getModules(req, res) {
       const previousCompleted = previousModule
         ? completionCounts.get(Number(previousModule.id)) || 0
         : 0
+      const previousIslandCleared = previousActivities.length === 0 ||
+        previousCompleted >= previousActivities.length
 
       return {
       ...module,
       activities: activitiesByModule[module.id] || [],
-      isUnlocked: index === 0 ||
-        previousCompleted >= previousActivities.length ||
-        previousCompleted >= 10
+      isUnlocked: index === 0 || previousIslandCleared
       }
     }))
   } catch (err) {
@@ -111,7 +145,7 @@ async function getNextLesson(req, res) {
 
     const current = currentRows[0]
     const [sameModule] = await db.query(
-      `SELECT id, title, level_label, module_id FROM lessons
+      `SELECT id, title, level_label, module_id, order_index FROM lessons
        WHERE module_id = ? AND is_active = TRUE AND order_index > ?
        ORDER BY order_index LIMIT 1`,
       [current.module_id, current.order_index]
@@ -128,7 +162,7 @@ async function getNextLesson(req, res) {
     if (nextModule.length === 0) return res.json({ nextLesson: null })
 
     const [firstActivity] = await db.query(
-      `SELECT id, title, level_label, module_id FROM lessons
+      `SELECT id, title, level_label, module_id, order_index FROM lessons
        WHERE module_id = ? AND is_active = TRUE ORDER BY order_index LIMIT 1`,
       [nextModule[0].id]
     )
@@ -151,6 +185,10 @@ async function getLesson(req, res) {
     if (rows.length === 0) return res.status(404).json({ message: 'Lesson not found.' })
 
     const lesson = rows[0]
+    if (!(await isLessonUnlocked(lesson, req.user.id))) {
+      return res.status(403).json({ message: 'Complete earlier levels to unlock this level.' })
+    }
+
     const [steps] = await db.query(
       'SELECT * FROM guided_steps WHERE lesson_id = ? ORDER BY step_order',
       [req.params.id]

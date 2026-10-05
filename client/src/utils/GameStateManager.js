@@ -85,6 +85,23 @@ export function getLocallyCompletedLessonIds(userId) {
   return new Set(readCompletedLessons(userId))
 }
 
+export function clearLocallyCompletedLessonIds(userId, lessonIds) {
+  const key = completedLessonsKey(userId)
+  if (!key) return
+
+  try {
+    if (!Array.isArray(lessonIds)) {
+      localStorage.removeItem(key)
+      return
+    }
+
+    const clearedIds = new Set(lessonIds.map(Number))
+    const remainingIds = readCompletedLessons(userId)
+      .filter(id => !clearedIds.has(id))
+    localStorage.setItem(key, JSON.stringify(remainingIds))
+  } catch (_) {}
+}
+
 export function isLessonCompleted(lessonId, userId) {
   return getLocallyCompletedLessonIds(userId).has(Number(lessonId))
 }

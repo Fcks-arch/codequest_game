@@ -32,7 +32,7 @@ export default function LoginPage() {
       if (mode === 'login') {
         const user = await login(form.email, form.password);
 
-        navigate(user.role === 'instructor' ? '/teacher' : '/');
+        navigate(user.role === 'instructor' ? '/teacher' : '/island/1');
       } else {
         const user = await register(
           form.name,
@@ -63,7 +63,7 @@ export default function LoginPage() {
         credentialResponse.credential
       );
 
-      navigate(user.role === 'instructor' ? '/teacher' : '/');
+      navigate(user.role === 'instructor' ? '/teacher' : user.newAccount ? '/island/1' : '/');
     } catch (err) {
       setError(
         err.response?.data?.message || 'Google sign-in failed.'

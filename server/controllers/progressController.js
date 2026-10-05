@@ -26,50 +26,69 @@ async function completeLesson(req, res) {
 
   if (!lesson_id) return res.json({ message: 'No lesson_id provided.', alreadyDone: true })
 
+  let connection
   try {
-    const [existing] = await db.query(
-      'SELECT * FROM student_progress WHERE user_id = ? AND lesson_id = ?',
-      [user_id, lesson_id]
-    )
+    connection = await db.getConnection()
+    await connection.beginTransaction()
 
-    const [lessonRows] = await db.query(
+    const [lessonRows] = await connection.query(
       `SELECT lessons.xp_reward, lessons.module_id, lesson_modules.title AS module_title,
               lesson_modules.order_index AS module_order
        FROM lessons JOIN lesson_modules ON lesson_modules.id = lessons.module_id
        WHERE lessons.id = ?`,
       [lesson_id]
     )
-    if (lessonRows.length === 0)
+    if (lessonRows.length === 0) {
+      await connection.rollback()
       return res.status(404).json({ message: 'Lesson not found.' })
+    }
 
     const xpReward = lessonRows[0].xp_reward
-    const alreadyDone = existing.length > 0 && existing[0].phase === 'completed'
+    await connection.query(
+      `INSERT IGNORE INTO student_progress (user_id, lesson_id, phase, attempts, xp_awarded)
+       VALUES (?, ?, 'guided', 0, FALSE)`,
+      [user_id, lesson_id]
+    )
+
+    const [existing] = await connection.query(
+      'SELECT phase, xp_awarded FROM student_progress WHERE user_id = ? AND lesson_id = ? FOR UPDATE',
+      [user_id, lesson_id]
+    )
+    const alreadyDone = existing[0].phase === 'completed'
+    const xpAlreadyAwarded = Boolean(existing[0].xp_awarded)
 
     if (!alreadyDone) {
-      await db.query(
-        `INSERT INTO student_progress (user_id, lesson_id, phase, completed_at, attempts)
-         VALUES (?, ?, 'completed', NOW(), 1)
-         ON DUPLICATE KEY UPDATE
-         phase='completed', completed_at=NOW(), attempts=attempts+1`,
+      await connection.query(
+        `UPDATE student_progress
+         SET phase = 'completed', completed_at = NOW(), attempts = attempts + 1
+         WHERE user_id = ? AND lesson_id = ?`,
         [user_id, lesson_id]
       )
     }
 
     let newXp
     let newLevel
-    if (!alreadyDone) {
-      const [userRows] = await db.query(
-        'SELECT xp FROM users WHERE id = ?',
+    if (!xpAlreadyAwarded) {
+      const [userRows] = await connection.query(
+        'SELECT xp FROM users WHERE id = ? FOR UPDATE',
         [user_id]
       )
       newXp    = userRows[0].xp + xpReward
       newLevel = Math.floor(newXp / 100) + 1
 
-      await db.query(
+      await connection.query(
         'UPDATE users SET xp = ?, level = ? WHERE id = ?',
         [newXp, newLevel, user_id]
       )
+      await connection.query(
+        'UPDATE student_progress SET xp_awarded = TRUE WHERE user_id = ? AND lesson_id = ?',
+        [user_id, lesson_id]
+      )
     }
+
+    await connection.commit()
+    connection.release()
+    connection = null
 
     // first-clear badge
     const [clearBadge] = await db.query(
@@ -126,14 +145,58 @@ async function completeLesson(req, res) {
       alreadyDone,
       islandComplete,
       moduleTitle: lessonRows[0].module_title,
-      xpAwarded: alreadyDone ? 0 : xpReward,
+      xpAwarded: xpAlreadyAwarded ? 0 : xpReward,
       newXp,
       newLevel,
       awardedBadges
     })
   } catch (err) {
+    if (connection) {
+      try {
+        await connection.rollback()
+      } catch (_) {}
+    }
     console.error(err)
     res.status(500).json({ message: 'Error completing lesson.' })
+  } finally {
+    connection?.release()
+  }
+}
+
+// POST /api/progress/restart-island
+async function restartIsland(req, res) {
+  const lessonId = Number(req.body.lesson_id)
+  if (!Number.isInteger(lessonId) || lessonId <= 0) {
+    return res.status(400).json({ message: 'A valid lesson_id is required.' })
+  }
+
+  try {
+    const [currentLessons] = await db.query(
+      'SELECT module_id FROM lessons WHERE id = ? AND is_active = TRUE',
+      [lessonId]
+    )
+    if (currentLessons.length === 0) {
+      return res.status(404).json({ message: 'Lesson not found.' })
+    }
+
+    const moduleId = currentLessons[0].module_id
+    const [islandLessons] = await db.query(
+      'SELECT id FROM lessons WHERE module_id = ? AND is_active = TRUE',
+      [moduleId]
+    )
+
+    await db.query(
+      `UPDATE student_progress sp
+       JOIN lessons l ON l.id = sp.lesson_id
+       SET sp.phase = 'guided', sp.completed_at = NULL
+       WHERE sp.user_id = ? AND l.module_id = ?`,
+      [req.user.id, moduleId]
+    )
+
+    res.json({ lesson_ids: islandLessons.map(lesson => Number(lesson.id)) })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ message: 'Error restarting island progress.' })
   }
 }
 
@@ -325,6 +388,7 @@ async function getPosttestResult(req, res) {
 module.exports = {
   getProgress,
   completeLesson,
+  restartIsland,
   getBadges,
   getLeaderboard,
   savePretest,

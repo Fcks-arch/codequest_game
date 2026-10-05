@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext'
 import GameCanvas, { startBgMusic, stopBgMusic } from '../components/GameCanvas'
 import CodeEditor, { lintJava } from '../components/CodeEditor'
 import {
+  clearLocallyCompletedLessonIds,
   getIslandLives,
   markLessonCompleted,
   resetIslandLives,
@@ -155,7 +156,7 @@ function LessonBriefing({ lesson }) {
 
       <p
         style={{
-          fontSize: 12.5,
+          fontSize: 12,
           color: C.onyx600,
           lineHeight: 1.7,
           margin: '0 0 7px'
@@ -1177,7 +1178,7 @@ function GuidedPanel({
           </button>
         )}
 
-        {!taskComplete && (
+        {!taskComplete && !allDone && (
           <div
             className="lesson-guided__footer-note"
             style={{
@@ -1195,7 +1196,7 @@ function GuidedPanel({
         <NextLevelButton
           onNext={onNext}
           isFinalLevel={isFinalLevel}
-          isCleared={taskComplete}
+          isCleared={taskComplete || allDone}
           completed={taskComplete}
         />
       </div>
@@ -1326,8 +1327,8 @@ function FreeCodePanel({
       <div
         style={{
           flex: '1 1 260px',
-          minHeight: 260,
-          overflow: 'visible',
+          minHeight: 0,
+          overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
           padding: '12px 12px 0'
@@ -1349,9 +1350,8 @@ function FreeCodePanel({
         <div
           data-testid="free-code-editor"
           style={{
-            flex: '1 1 auto',
-            minHeight: 220,
-            height: 260,
+            flex: '1 1 0',
+            minHeight: 0,
             borderRadius: 10,
             overflow: 'hidden',
             border: `1px solid ${C.onyx100}`
@@ -1735,6 +1735,8 @@ const [wrongAnswers, setWrongAnswers] = useState(() =>
 )
 const [isDying, setIsDying] = useState(false)
 const [showGameOver, setShowGameOver] = useState(false)
+const [isRestarting, setIsRestarting] = useState(false)
+const [restartError, setRestartError] = useState('')
 const lives = Math.max(0, MAX_LIVES - wrongAnswers)
 const [deathPosition, setDeathPosition] = useState(null)
 const [lightningToken, setLightningToken] = useState(0)
@@ -1774,13 +1776,10 @@ const deathResolveRef = useRef(null)
           user?.id
         )
 
-        if (!res.data.alreadyDone) {
-          setXpGained(
-            res.data.xpAwarded ||
-              lesson.xp_reward ||
-              0
-          )
+        const xpAwarded = Number(res.data.xpAwarded) || 0
+        setXpGained(xpAwarded)
 
+        if (xpAwarded > 0) {
           updateXp(
             res.data.newXp,
             res.data.newLevel,
@@ -1788,10 +1787,7 @@ const deathResolveRef = useRef(null)
           )
 
           setToast({
-            msg: `+${
-              res.data.xpAwarded ||
-              lesson.xp_reward
-            } XP — quest cleared!`,
+            msg: `+${xpAwarded} XP — quest cleared!`,
             tone: 'emerald',
             k: Date.now()
           })
@@ -1800,9 +1796,9 @@ const deathResolveRef = useRef(null)
             () => setToast(null),
             3000
           )
-        } else {
-          setXpGained(0)
         }
+
+        return true
       })
       .catch(err => {
         console.error(err)
@@ -1818,6 +1814,8 @@ const deathResolveRef = useRef(null)
           () => setToast(null),
           3500
         )
+
+        return false
       })
       .finally(() => {
         if (
@@ -1994,6 +1992,10 @@ const deathResolveRef = useRef(null)
           )
         }
 
+        const nextLessonResponse = await axios
+          .get(`/api/lessons/${fetchedLesson.id}/next`)
+          .catch(() => null)
+
         const serverCompleted =
           (progressResponse.data || [])
             .some(item => {
@@ -2053,8 +2055,14 @@ const deathResolveRef = useRef(null)
             localLesson?.starter_code ||
             localLesson?.initialCode ||
             ''
-        })
+        }, nextLessonResponse?.data?.nextLesson || null)
       } catch (error) {
+        if (error.response?.status === 403) {
+          setLesson(null)
+          navigate(`/island/${activeIslandId}`, { replace: true })
+          return
+        }
+
         console.error(
           'Lesson fetch failed. Falling back to local lesson data.',
           error
@@ -2099,7 +2107,8 @@ const deathResolveRef = useRef(null)
   }, [
     id,
     activeIslandId,
-    relativeLevel
+    relativeLevel,
+    navigate
   ])
 
   useEffect(() => {
@@ -2226,14 +2235,31 @@ const deathResolveRef = useRef(null)
       }
     }, [])
 
-  const resetToFirstLevel =
-    useCallback(() => {
+  const resetIslandRun =
+    useCallback(async () => {
+      if (!lesson?.id || isRestarting) return
+
+      setIsRestarting(true)
+      setRestartError('')
+      try {
+        const response = await axios.post('/api/progress/restart-island', {
+          lesson_id: Number(lesson.id)
+        })
+        clearLocallyCompletedLessonIds(user?.id, response.data.lesson_ids)
+      } catch (error) {
+        console.error('Could not restart island progress.', error)
+        setRestartError('The island could not be restarted. Please try again.')
+        setIsRestarting(false)
+        return false
+      }
+
       setShowGameOver(false)
       setWrongAnswers(0)
       resetIslandLives(activeIslandId, MAX_LIVES)
       setIsDying(false)
       setDeathPosition(null)
       setCompleted(false)
+      setLevelAlreadyCleared(false)
       setIslandCleared(false)
       setCompletedCode('')
       setCheck(null)
@@ -2242,10 +2268,21 @@ const deathResolveRef = useRef(null)
       setToast(null)
       setGuidedResetKey(current => current + 1)
       setCanvasResetToken(current => current + 1)
+      setLightningToken(0)
+      deathResolveRef.current = null
+      setRestartError('')
+      setIsRestarting(false)
 
       guidedCodeRef.current = ''
       guidedEventsRef.current = []
       guidedFinalStepRef.current = false
+
+      return true
+    }, [activeIslandId, isRestarting, lesson, user?.id])
+
+  const resetToFirstLevel =
+    useCallback(async () => {
+      if (!(await resetIslandRun())) return
 
       navigate(
         `/lesson/1?island=${activeIslandId}`,
@@ -2256,21 +2293,13 @@ const deathResolveRef = useRef(null)
           }
         }
       )
-    }, [activeIslandId, navigate])
+    }, [activeIslandId, navigate, resetIslandRun])
 
   const returnToMapAfterGameOver =
-    useCallback(() => {
-      setShowGameOver(false)
-      setWrongAnswers(
-        MAX_LIVES -
-          getIslandLives(activeIslandId, MAX_LIVES)
-      )
-      setIsDying(false)
-      setDeathPosition(null)
-      deathResolveRef.current = null
-
+    useCallback(async () => {
+      if (!(await resetIslandRun())) return
       navigate(getIslandRoute(lesson, location))
-    }, [lesson, location, navigate])
+    }, [lesson, location, navigate, resetIslandRun])
 
   const handleWrongAnswer =
     useCallback(() => {
@@ -2545,47 +2574,41 @@ const deathResolveRef = useRef(null)
     async () => {
       if (!lesson) return
 
-      await saveProgress()
+      const progressSaved = await saveProgress()
+      if (!progressSaved) return
 
-      const currentLevel =
-        Number(
-          lesson.order_index ||
-            lesson.level_label
-              ?.match(/\d+/)?.[0] ||
-            relativeLevel
-        )
+      try {
+        const response = await axios.get(`/api/lessons/${lesson.id}/next`)
+        const target = response.data?.nextLesson
 
-      const currentIslandId =
-        getActiveIslandId(
-          lesson,
-          location
-        ) ||
-        activeIslandId
-
-      const totalLevels =
-        getIslandLevelCount(
-          currentIslandId
-        )
-
-      if (currentLevel >= totalLevels) {
-        setIslandCleared(true)
-        return
-      }
-
-      const nextLevel =
-        currentLevel + 1
-
-      navigate(
-        `/lesson/${nextLevel}?island=${currentIslandId}`,
-        {
-          state: {
-            islandId:
-              currentIslandId,
-            relativeLevel:
-              nextLevel
-          }
+        if (!target) {
+          setIslandCleared(true)
+          return
         }
-      )
+
+        const nextLevel = Number(target.order_index) ||
+          Number(target.level_label?.match(/\d+/)?.[0]) || 1
+        const currentIslandId = Number(target.module_id)
+
+        navigate(
+          `/lesson/${nextLevel}?island=${currentIslandId}`,
+          {
+            state: {
+              islandId:
+                currentIslandId,
+              relativeLevel:
+                nextLevel
+            }
+          }
+        )
+      } catch (error) {
+        console.error('Could not load the next level.', error)
+        setToast({
+          msg: 'The next level could not be loaded. Please try again.',
+          tone: 'amber',
+          k: Date.now()
+        })
+      }
     }
 
   /* =========================================================
@@ -3093,7 +3116,9 @@ const deathResolveRef = useRef(null)
                 completedCode={
                   completedCode
                 }
-                isFinalLevel={isFinalLevel}
+                isFinalLevel={
+                  !nextLesson
+                }
               />
             )}
 
@@ -3131,7 +3156,9 @@ const deathResolveRef = useRef(null)
                 onResetCanvas={
                   resetCanvasForReplay
                 }
-                isFinalLevel={isFinalLevel}
+                isFinalLevel={
+                  !nextLesson
+                }
               />
             )}
         </div>
@@ -3200,6 +3227,11 @@ const deathResolveRef = useRef(null)
             >
               Your three hearts are gone. Restart this island from Level 1?
             </p>
+            {restartError && (
+              <p role="alert" style={{ margin: '-10px 0 16px', color: '#B91C1C', fontSize: 13 }}>
+                {restartError}
+              </p>
+            )}
             <div
               style={{
                 display: 'flex',
@@ -3210,6 +3242,7 @@ const deathResolveRef = useRef(null)
               <button
                 type="button"
                 onClick={returnToMapAfterGameOver}
+                disabled={isRestarting}
                 style={{
                   flex: 1,
                   padding: '11px 14px',
@@ -3218,14 +3251,16 @@ const deathResolveRef = useRef(null)
                   background: '#fff',
                   color: C.onyx600,
                   fontWeight: 700,
-                  cursor: 'pointer'
+                  cursor: isRestarting ? 'wait' : 'pointer',
+                  opacity: isRestarting ? 0.7 : 1
                 }}
               >
-                Back to Map
+                {isRestarting ? 'Resetting...' : 'Back to Map'}
               </button>
               <button
                 type="button"
                 onClick={resetToFirstLevel}
+                disabled={isRestarting}
                 style={{
                   flex: 1,
                   padding: '11px 14px',
@@ -3234,10 +3269,11 @@ const deathResolveRef = useRef(null)
                   background: C.purple,
                   color: '#fff',
                   fontWeight: 700,
-                  cursor: 'pointer'
+                  cursor: isRestarting ? 'wait' : 'pointer',
+                  opacity: isRestarting ? 0.7 : 1
                 }}
               >
-                Restart to Level 1
+                {isRestarting ? 'Restarting...' : 'Restart to Level 1'}
               </button>
             </div>
           </div>

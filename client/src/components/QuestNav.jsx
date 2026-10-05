@@ -1,5 +1,6 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { Link, NavLink } from 'react-router-dom'
+import { Menu, X } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { Ico, Pill } from './UI'
 
@@ -14,6 +15,7 @@ const TABS = [
 
 export default function QuestNav() {
   const { user } = useAuth()
+  const [menuOpen, setMenuOpen] = useState(false)
   const avatarInitials = (user?.name || 'Player')
     .trim()
     .split(/\s+/)
@@ -22,19 +24,31 @@ export default function QuestNav() {
     .join('')
 
   return (
-    <nav className="quest-nav">
+    <nav className={`quest-nav${menuOpen ? ' quest-nav--open' : ''}`}>
       <Link to="/" className="brand brand--medieval" title="Java Foundations">
         <span className="brand__shield" aria-hidden="true">⚔</span>
         CodeQuest
       </Link>
 
-      <div className="quest-nav__tabs">
+      <button
+        type="button"
+        className="quest-nav__menu-toggle"
+        onClick={() => setMenuOpen(open => !open)}
+        aria-label={menuOpen ? 'Close navigation menu' : 'Open navigation menu'}
+        aria-expanded={menuOpen}
+        aria-controls="quest-nav-links"
+      >
+        {menuOpen ? <X size={21} aria-hidden="true" /> : <Menu size={21} aria-hidden="true" />}
+      </button>
+
+      <div className="quest-nav__tabs" id="quest-nav-links">
         {TABS.map(tab => (
           <NavLink
             key={tab.to}
             to={tab.to}
             end={tab.end}
             className={({ isActive }) => `quest-nav__tab ${isActive ? 'quest-nav__tab--active' : ''}`}
+            onClick={() => setMenuOpen(false)}
           >
             {tab.label}
           </NavLink>
@@ -57,6 +71,7 @@ export default function QuestNav() {
           className={({ isActive }) => `quest-nav__profile${isActive ? ' quest-nav__profile--active' : ''}`}
           aria-label={`Open ${user?.name || 'player'} profile`}
           title="Open profile"
+          onClick={() => setMenuOpen(false)}
         >
           <span className="quest-nav__profile-fallback" aria-hidden="true">
             {avatarInitials}

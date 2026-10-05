@@ -267,6 +267,12 @@ router.post(
   progress.completeLesson
 );
 
+router.post(
+  '/progress/restart-island',
+  authMiddleware,
+  progress.restartIsland
+);
+
 router.get(
   '/progress/badges',
   authMiddleware,

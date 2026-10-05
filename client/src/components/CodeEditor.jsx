@@ -137,8 +137,8 @@ export default function CodeEditor({ value, onChange, fillHeight }) {
       <div
         ref={nums}
         style={{
-          background:'#0B1220', color:'#374151', fontSize:12,
-          lineHeight:'21px', padding:'12px 8px', textAlign:'right',
+          background:'#0B1220', color:'#374151', fontSize:'var(--cq-editor-font-size, 12px)',
+          lineHeight:'var(--cq-editor-line-height, 21px)', padding:'var(--cq-editor-gutter-padding, 12px 8px)', textAlign:'right',
           userSelect:'none', overflow:'hidden', minWidth:34,
           fontFamily:"'JetBrains Mono',monospace", flexShrink:0, zIndex:3
         }}
@@ -162,8 +162,9 @@ export default function CodeEditor({ value, onChange, fillHeight }) {
         style={{
           position:'absolute', inset:0, width:'100%', height:'100%', background:'transparent', color:'transparent',
           caretColor:'#F8FAFC',
-          border:'none', resize:'none', fontSize:13, lineHeight:'21px',
-          padding:'12px 14px', fontFamily:"'JetBrains Mono',monospace", whiteSpace:'pre', overflow:'auto',
+          border:'none', resize:'none', fontSize:'var(--cq-editor-font-size, 13px)', lineHeight:'var(--cq-editor-line-height, 21px)',
+          padding:'var(--cq-editor-code-padding, 12px 14px)', fontFamily:"'JetBrains Mono',monospace", whiteSpace:'pre', overflow:'auto',
+          touchAction:'pan-x pan-y', WebkitOverflowScrolling:'touch',
           outline:'none'
         }}
       />
