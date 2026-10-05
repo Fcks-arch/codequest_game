@@ -55,6 +55,10 @@
   .lesson-page {
     height: 100vh !important;
     height: 100dvh !important;
+    --cq-editor-font-size: 12px;
+    --cq-editor-line-height: 18px;
+    --cq-editor-gutter-padding: 8px 6px;
+    --cq-editor-code-padding: 8px 10px;
   }
 
   .lesson-page__topbar {
@@ -195,73 +199,270 @@
   }
 }
 
-@media screen and (max-width: 760px) and (orientation: portrait) {
-  .lesson-page > :not(.lesson-page__orientation-prompt) {
-    display: none !important;
+@media screen and (max-width: 600px) and (orientation: portrait) {
+  .lesson-page {
+    --cq-editor-font-size: 12px;
+    --cq-editor-line-height: 18px;
+    --cq-editor-gutter-padding: 8px 5px;
+    --cq-editor-code-padding: 8px 9px;
   }
 
   .lesson-page__orientation-prompt {
-    position: fixed;
-    inset: 0;
-    z-index: 10000;
-    display: flex;
+    display: none !important;
+  }
+
+  .lesson-page__topbar {
+    height: 46px !important;
+    gap: 5px !important;
+    padding: 0 7px !important;
+  }
+
+  .lesson-page__topbar-title,
+  .lesson-page__topbar-actions {
+    min-width: 0;
+    gap: 5px !important;
+  }
+
+  .lesson-page__back {
+    flex-shrink: 0;
+    padding: 4px 7px !important;
+    font-size: 10px !important;
+  }
+
+  .lesson-page__island-label {
+    display: none;
+  }
+
+  .lesson-page__lesson-heading {
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .lesson-page__lesson-title {
+    max-width: 32vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 11px !important;
+  }
+
+  .lesson-page__topbar-actions > div:first-child > button {
+    padding: 4px 7px !important;
+    font-size: 10px !important;
+  }
+
+  .lesson-page__topbar-actions > button {
+    width: 29px !important;
+    height: 29px !important;
+  }
+
+  .lesson-page__main {
+    min-height: 0;
     flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 14px;
-    padding: 24px;
-    background: #0f172a;
-    color: #fff;
-    text-align: center;
   }
 
-  .lesson-page__orientation-back {
-    position: absolute;
-    top: max(16px, env(safe-area-inset-top, 0px));
-    left: max(16px, env(safe-area-inset-left, 0px));
-    display: inline-flex;
-    min-height: 40px;
-    align-items: center;
-    gap: 6px;
-    padding: 0 12px;
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 8px;
-    background: rgba(255, 255, 255, 0.08);
-    color: #fff;
-    font: inherit;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    touch-action: manipulation;
+  .lesson-page__game {
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+    height: min(29dvh, 56.25vw);
+    flex: 0 0 min(29dvh, 56.25vw) !important;
   }
 
-  .lesson-page__orientation-back:focus-visible {
-    outline: 2px solid #a5b4fc;
-    outline-offset: 3px;
+  .lesson-page__panel--open {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 0;
+    height: auto !important;
+    flex: 1 1 0 !important;
+    border-left: 0 !important;
+    border-top: 1px solid rgba(15, 23, 42, 0.12);
   }
 
-  .lesson-page__orientation-icon {
-    position: relative;
-    display: grid;
-    width: 72px;
-    height: 72px;
-    place-items: center;
-    color: #a5b4fc;
+  .lesson-guided__content {
+    min-height: 0;
+    overflow-y: auto;
+  }
+}
+
+@media screen and (min-width: 601px) and (max-width: 1024px) and (orientation: portrait) {
+  .lesson-page {
+    --cq-editor-font-size: 12px;
+    --cq-editor-line-height: 19px;
+    --cq-editor-gutter-padding: 9px 6px;
+    --cq-editor-code-padding: 10px 11px;
   }
 
-  .lesson-page__orientation-icon svg:last-child {
-    position: absolute;
-    right: 0;
-    bottom: 0;
-    padding: 3px;
-    border-radius: 50%;
-    background: #0f172a;
-    color: #34d399;
+  .lesson-page__topbar {
+    gap: 7px !important;
+    padding: 0 10px !important;
   }
 
-  .lesson-page__orientation-prompt p {
-    margin: 0;
-    font-size: 16px;
-    font-weight: 600;
+  .lesson-page__topbar-title,
+  .lesson-page__topbar-actions {
+    min-width: 0;
+    gap: 7px !important;
+  }
+
+  .lesson-page__lesson-heading {
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .lesson-page__lesson-title {
+    max-width: 38vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .lesson-page__main {
+    min-height: 0;
+    flex-direction: column;
+  }
+
+  .lesson-page__game {
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+    height: min(40dvh, 56.25vw);
+    flex: 0 0 min(40dvh, 56.25vw) !important;
+  }
+
+  .lesson-page__panel--open {
+    width: 100% !important;
+    min-width: 0 !important;
+    height: auto !important;
+    max-height: none;
+    flex: 1 1 0 !important;
+    border-left: 0 !important;
+    border-top: 1px solid rgba(15, 23, 42, 0.12);
+  }
+
+  .lesson-guided__content {
+    min-height: 0;
+    overflow-y: auto;
+  }
+}
+
+@media screen and (min-width: 761px) and (max-width: 1366px) and (orientation: landscape) {
+  .lesson-page {
+    --cq-editor-font-size: 12px;
+    --cq-editor-line-height: 19px;
+    --cq-editor-gutter-padding: 9px 6px;
+    --cq-editor-code-padding: 10px 11px;
+    --lesson-panel-width: clamp(250px, 22vw, 300px);
+  }
+
+  .lesson-page__topbar {
+    gap: 7px !important;
+    padding: 0 10px !important;
+  }
+
+  .lesson-page__lesson-heading {
+    min-width: 0;
+  }
+
+  .lesson-page__lesson-title {
+    max-width: 32vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .lesson-page__game {
+    min-width: 0;
+    min-height: 0;
+    width: min(calc(100vw - var(--lesson-panel-width)), calc((100dvh - 46px) * 1.7778));
+    height: auto;
+    aspect-ratio: 16 / 9;
+    flex: 0 1 auto !important;
+    align-self: center;
+  }
+
+  .lesson-page__panel--open {
+    width: var(--lesson-panel-width) !important;
+    min-width: var(--lesson-panel-width) !important;
+    min-height: 0;
+    height: auto !important;
+    flex: 0 0 var(--lesson-panel-width) !important;
+    border-left: 1px solid rgba(15, 23, 42, 0.12) !important;
+    border-top: 0;
+  }
+
+  .lesson-guided__content {
+    min-height: 0;
+    overflow-y: auto;
+  }
+}
+
+@media screen and (min-width: 761px) and (max-width: 1366px) and (max-height: 850px) and (orientation: landscape) {
+  .lesson-page__topbar {
+    height: 46px !important;
+  }
+
+  .lesson-page__lesson-title {
+    max-width: 28vw;
+    font-size: 12px !important;
+  }
+
+  .lesson-page__panel--open {
+    width: var(--lesson-panel-width) !important;
+    min-width: var(--lesson-panel-width) !important;
+  }
+
+  .lesson-guided__header {
+    padding: 7px 10px 6px !important;
+  }
+
+  .lesson-guided__content {
+    min-height: 0;
+    padding: 8px 10px !important;
+  }
+
+  .lesson-guided__briefing {
+    margin-bottom: 6px !important;
+    padding: 7px 9px !important;
+  }
+
+  .lesson-guided__prompt {
+    margin-bottom: 6px !important;
+    padding: 8px 9px !important;
+    font-size: 12px !important;
+    line-height: 1.4 !important;
+  }
+
+  .lesson-guided__answers {
+    gap: 5px !important;
+  }
+
+  .lesson-guided__answer {
+    padding: 7px 9px !important;
+    font-size: 12px !important;
+    line-height: 1.35 !important;
+  }
+
+  .lesson-guided__selected-code {
+    max-height: 56px !important;
+    padding: 5px 9px !important;
+  }
+
+  .lesson-guided__footer {
+    gap: 3px !important;
+    padding: 5px 8px !important;
+  }
+
+  .lesson-guided__footer-note {
+    margin: 0 0 3px !important;
+    font-size: 9px !important;
+    line-height: 1.2;
+  }
+
+  .lesson-guided__footer > button,
+  .lesson-guided__next {
+    min-height: 34px;
+    padding: 7px 8px !important;
+    font-size: 11px !important;
+    border-radius: 8px !important;
   }
 }

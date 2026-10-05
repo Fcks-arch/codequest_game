@@ -30,8 +30,9 @@ export function completedModuleCounts(progress) {
 
 export function isActivityUnlocked(index, activities, completedIds) {
   if (index === 0) return true
-  const previousActivity = activities[index - 1]
-  return !!previousActivity && completedIds.has(Number(previousActivity.id))
+  return activities
+    .slice(0, index)
+    .every(activity => completedIds.has(Number(activity.id)))
 }
 
 export function isModuleCleared(module, completedIds) {
@@ -61,8 +62,7 @@ export function getIslandStatuses(modules, completedIds, unlockedOverride = 1, p
     const previousCount = previousModule ? completedCounts.get(Number(previousModule.id)) || 0 : 0
     const previousComplete = previousModule && (
       isModuleCleared(previousModule, completedIds) ||
-      previousCount >= previousModule.activities.length ||
-      previousCount >= 10
+      (previousModule.activities.length === 0 || previousCount >= previousModule.activities.length)
     )
     const unlocked = index === 0 || previousComplete || override >= module.id
 

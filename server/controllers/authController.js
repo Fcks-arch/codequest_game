@@ -14,7 +14,6 @@ const mailer = nodemailer.createTransport({
     pass: process.env.EMAIL_PASS
   }
 })
-
 // POST /api/auth/register
 async function register(req, res) {
   const { name, email, password, role, section, teacherCode } = req.body
@@ -33,6 +32,7 @@ async function register(req, res) {
       'INSERT INTO users (name, email, password, role, section) VALUES (?, ?, ?, ?, ?)',
       [name, email, hashed, requestedRole, section || null]
     )
+    await db.query('DELETE FROM student_progress WHERE user_id = ?', [result.insertId])
 
     const token = jwt.sign(
       { id: result.insertId, name, role: requestedRole },
@@ -104,6 +104,7 @@ async function googleAuth(req, res) {
 
     let [rows] = await db.query('SELECT * FROM users WHERE email = ? OR google_id = ?', [payload.email, payload.sub])
     let user
+    let newAccount = false
 
     if (rows.length === 0) {
       // New account — created via Google, no local password
@@ -111,6 +112,8 @@ async function googleAuth(req, res) {
         'INSERT INTO users (name, email, password, google_id, role) VALUES (?, ?, NULL, ?, ?)',
         [payload.name, payload.email, payload.sub, 'student']
       )
+      await db.query('DELETE FROM student_progress WHERE user_id = ?', [result.insertId])
+      newAccount = true
       const [created] = await db.query('SELECT * FROM users WHERE id = ?', [result.insertId])
       user = created[0]
     } else {
@@ -131,6 +134,7 @@ async function googleAuth(req, res) {
 
     res.json({
       token,
+      newAccount,
       user: {
         id: user.id, name: user.name, email: user.email,
         role: user.role, section: user.section,

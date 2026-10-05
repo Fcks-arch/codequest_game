@@ -101,6 +101,7 @@ CREATE TABLE student_progress (
   lesson_id INT NOT NULL,
   phase ENUM('guided', 'free', 'completed') DEFAULT 'guided',
   completed_at TIMESTAMP NULL,
+  xp_awarded BOOLEAN NOT NULL DEFAULT FALSE,
   attempts INT DEFAULT 0,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   FOREIGN KEY (lesson_id) REFERENCES lessons(id) ON DELETE CASCADE,

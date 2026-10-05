@@ -216,11 +216,10 @@ const RUN_THRESHOLD = 3
   const BG_GRASS_FRACTION = TERRAIN1_BRIDGE_FRACTION
   const TERRAIN1_TILE_SCALE = 1.16
   const TERRAIN1_MAX_VISUAL_TILE = 9.25
-  const MOBILE_LANDSCAPE_PIP_SCALE = typeof window !== 'undefined' && window.innerWidth > window.innerHeight && window.innerWidth <= 960 ? 0.5 : 1
   const BASE_PIP_RENDER_WIDTH = 58
   const BASE_PIP_RENDER_HEIGHT = 77
-  const PIP_RENDER_WIDTH = BASE_PIP_RENDER_WIDTH * MOBILE_LANDSCAPE_PIP_SCALE
-  const PIP_RENDER_HEIGHT = BASE_PIP_RENDER_HEIGHT * MOBILE_LANDSCAPE_PIP_SCALE
+  const pipRenderScaleForWidth = width =>
+    width <= 600 ? 0.58 : width <= 820 ? 0.68 : width <= 1100 ? 0.78 : width <= 1366 ? 0.88 : 1
   const START_X = 50
   const WALK_SPEED = 1.2
   const WAYPOINT_TARGET_X = 620
@@ -476,6 +475,10 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
   const [errMsg,   setErrMsg]   = useState('')
   const [canvasH,  setCanvasH]  = useState(300)
   const [canvasW,  setCanvasW]  = useState(1280)
+  const pipRenderScaleRef = useRef(1)
+  pipRenderScaleRef.current = pipRenderScaleForWidth(canvasW)
+  const getPipRenderWidth = () => BASE_PIP_RENDER_WIDTH * pipRenderScaleRef.current
+  const getPipRenderHeight = () => BASE_PIP_RENDER_HEIGHT * pipRenderScaleRef.current
   const [assetsReady, setAssetsReady] = useState(false)
   const [isIdleLoaded, setIsIdleLoaded] = useState(false) // eslint-disable-line no-unused-vars
   const [tileProgress, setTileProgress] = useState(0) // eslint-disable-line no-unused-vars
@@ -579,7 +582,7 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
           const feetY = Number.isFinite(groundLineRef.current)
             ? groundLineRef.current
             : canvasH * 0.72 - 26
-          const characterY = rect.top + feetY - PIP_RENDER_HEIGHT / 2
+          const characterY = rect.top + feetY - getPipRenderHeight() / 2
 
           onCharacterPosition({ x: characterX, y: characterY })
         }
@@ -607,7 +610,7 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
     const groundY = Number.isFinite(groundLineRef.current)
       ? groundLineRef.current
       : canvasH * 0.72 - 26
-    const pipHeadY = groundY - PIP_RENDER_HEIGHT * (currentLevel === 5 ? LEVEL5_PIP_SCALE : 1) - 15
+    const pipHeadY = groundY - getPipRenderHeight() * (currentLevel === 5 ? LEVEL5_PIP_SCALE : 1) - 15
 
     setBubbleX(Math.round(pipCanvasX))
     setBubbleY(Math.round(pipHeadY))
@@ -1167,6 +1170,8 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
   function drawSceneInner(ctx, px, bounce, flagHit, pose, idleBob, animMs = 0, characterAlpha = 1, characterFeetY = null, characterCenterX = null) {
     const W = ctx.canvas.width
     const H = ctx.canvas.height
+    const PIP_RENDER_WIDTH = getPipRenderWidth()
+    const PIP_RENDER_HEIGHT = getPipRenderHeight()
     const routeTiles = Math.max(1, totalTiles)
     const TILE = W / routeTiles
     const tileWidth = W / routeTiles
@@ -1473,7 +1478,7 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
               : startGridX + visualTile * tileSize + (tileSize - dWidth) / 2
             const rawDestY = CY_base - dHeight
             const destX = Number.isFinite(rawDestX) ? rawDestX : 0
-            const destY = Number.isFinite(rawDestY) ? rawDestY : feetLine - PIP_RENDER_HEIGHT
+            const destY = Number.isFinite(rawDestY) ? rawDestY : feetLine - getPipRenderHeight()
             ctx.globalAlpha = alpha
             ctx.drawImage(
               poseImg,
@@ -1488,7 +1493,7 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
           const fh = box.h * spriteScale
           const fx = CX + (CW - fw) / 2
           const drawX = Number.isFinite(fx) ? fx : 0
-          const drawY = Number.isFinite(CY_base - fh) ? CY_base - fh : feetLine - PIP_RENDER_HEIGHT
+          const drawY = Number.isFinite(CY_base - fh) ? CY_base - fh : feetLine - getPipRenderHeight()
           ctx.globalAlpha = renderAlpha
           ctx.drawImage(poseImg, animFrame.x, animFrame.y, animFrame.w, animFrame.h, drawX, drawY, fw, fh)
           ctx.globalAlpha = 1
@@ -1668,7 +1673,7 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
       const visualTile = getVisualTilePosition(localTile, routeTiles, bgPath)
       // Same spot the idle pose uses, so there is no jump when the walk ends
       const endCenter = Math.max(4, tileW * 0.04) + (visualTile + 0.5) * tileW
-      const startCenter = -PIP_RENDER_WIDTH
+      const startCenter = -getPipRenderWidth()
       const cx = startCenter + (endCenter - startCenter) * eased
 
       walkFrameIndexRef.current = Math.floor((elapsed / 1000) * ISLAND_WALK_FPS)
@@ -1752,7 +1757,7 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
           : canvasH * 0.72 - 26
         onCharacterPosition({
           x: rect.left + visualTile * tileWidth + tileWidth / 2,
-          y: rect.top + feetY - PIP_RENDER_HEIGHT / 2
+          y: rect.top + feetY - getPipRenderHeight() / 2
         })
       }
     }
@@ -1903,7 +1908,7 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
         const feetY = Number.isFinite(groundLineRef.current)
           ? groundLineRef.current
           : canvasH * 0.72 - 26
-        const characterY = rect.top + feetY - PIP_RENDER_HEIGHT / 2
+        const characterY = rect.top + feetY - getPipRenderHeight() / 2
 
         onCharacterPosition({
           x: characterX,
@@ -2044,7 +2049,7 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
 
         // Phase 2: Pip runs across the platform and fades at the far edge
         const { dx, dw } = bgRenderRectRef.current
-        const endCenterX = dx + dw - PIP_RENDER_WIDTH * 0.4
+        const endCenterX = dx + dw - getPipRenderWidth() * 0.4
         const elapsed = sincePopup - LEVEL4_POPUP_MS
         const progress = Math.min(1, elapsed / LEVEL4_RUN_MS)
         const eased = progress < 0.5
@@ -2180,7 +2185,7 @@ export default function GameCanvas({ playToken, introToken = 0, replayToken = 0,
       setDialogueText('')
       setBubbleOpacity(1)
       setBubbleX(Math.round(centerForTile(startTile)))
-      setBubbleY(Math.round(groundLineRef.current - PIP_RENDER_HEIGHT - 15))
+      setBubbleY(Math.round(groundLineRef.current - getPipRenderHeight() - 15))
 
       let bubbleFaded = false
       let bubbleRemoved = false
