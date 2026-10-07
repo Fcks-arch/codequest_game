@@ -251,6 +251,7 @@
   const GOLEM_WAKING = 'WAKING'
   const GOLEM_STANDING = 'STANDING'
   const LEVEL_TWO_CODE = 'int doorCode = 42;'
+  const LEVEL2_WALK_SPEED = 0.10   // background-widths per second (~150px/s); lower = slower walk
   const SHARED_START_FRACTION = 0.47
   const ENTRANCE_START_TILES = { 3: 0.5, 4: 0.5, 5: 1.0, 8: 2 }
   const GATE_FRAME_COUNT = 5
@@ -572,6 +573,17 @@
   const LEVEL8_INTRO_MS = 2200     // Pip walks in from the left edge to his start tile
   const LEVEL8_RUN_SPEED = 0.16    // background-widths per second for the run across the arm
   const LEVEL8_FADE_ZONE = 0.05    // fade over the last 5% of the background width
+  // ── Drawbridge: static on Level 5, lowers on Level 6 when the code is solved ──
+  const DRAWBRIDGE_ASSET = '/assets/drawbridge.png'
+  const DRAWBRIDGE_STEP_MS = 260        // time per frame while it lowers
+  const DEBUG_DRAWBRIDGE = false        // true = draws a magenta box around the sprite while you tune it
+  // x = left edge of the pillar, span = width of the fully lowered frame (both as a fraction of the
+  // background width). The lowered deck's top edge always lands on Pip's walking line.
+  // restFrame: 0 = bridge raised, 4 = lowered.
+  const DRAWBRIDGE_CONFIGS = {
+  5: { x: 0.572, span: 0.200, restFrame: 0 },   // measured from your Level 5 art
+  6: { x: 0.658, span: 0.258, restFrame: 0 },   // estimated, see the note below
+}
 
 
 
@@ -888,6 +900,8 @@
     const librarianStepTimerRef = useRef(null)
     const armFrameRef = useRef(0)
     const armTimerRef = useRef(null)
+    const drawbridgeFrameRef = useRef(0)
+    const drawbridgeTimerRef = useRef(null)
     const drawSceneRef = useRef(null)
     const isCutsceneRunningRef = useRef(false)
     const [runState, setRunState] = useState('idle')
@@ -948,6 +962,7 @@
     const gateConfig = GATE_CONFIGS.default
     const fireConfig = FIRE_CONFIGS[currentLevel === 4 ? 3 : currentLevel] || null
     const librarianConfig = LIBRARIAN_CONFIGS[currentLevel] || null
+    const drawbridgeConfig = DRAWBRIDGE_CONFIGS[currentLevel] || null
     const hasGate = currentLevel === 1 || currentLevel === 2
     const isLevelTwo = currentLevel === 2
     const usesSharedStart = currentLevel === 1 || isLevelTwo
@@ -1210,6 +1225,18 @@
       }, ARM_STEP_MS)
     }, [])
 
+        const triggerDrawbridgeLower = useCallback(() => {
+      if (drawbridgeTimerRef.current || drawbridgeFrameRef.current >= ARM_FRAME_COUNT - 1) return
+      drawbridgeFrameRef.current = 0
+      drawbridgeTimerRef.current = setInterval(() => {
+        drawbridgeFrameRef.current = Math.min(ARM_FRAME_COUNT - 1, drawbridgeFrameRef.current + 1)
+        if (drawbridgeFrameRef.current >= ARM_FRAME_COUNT - 1) {
+          clearInterval(drawbridgeTimerRef.current)
+          drawbridgeTimerRef.current = null
+        }
+      }, DRAWBRIDGE_STEP_MS)
+    }, [])
+
     const playCompletionSequence = useCallback(() => {
       updateDialogueAnchor(lastPipX.current)
       setIsLevelComplete(true)
@@ -1351,7 +1378,13 @@
         clearInterval(armTimerRef.current)
         armTimerRef.current = null
       }
-      armFrameRef.current = 0
+            armFrameRef.current = 0
+
+      if (drawbridgeTimerRef.current) {
+        clearInterval(drawbridgeTimerRef.current)
+        drawbridgeTimerRef.current = null
+      }
+      drawbridgeFrameRef.current = drawbridgeConfig?.restFrame ?? 0
 
       if (cutsceneRef.current) cancelAnimationFrame(cutsceneRef.current)
       cutsceneRef.current = null
@@ -1399,7 +1432,8 @@
       fireSprite: fireConfig?.asset || null,
       bossGolemSprite: isBossIsland ? BOSS_SHEET_SRC : null,
       librarianSprite: LIBRARIAN_CONFIGS[currentLevel]?.asset || null,
-          armSprite: currentLevel === 8 ? LEVEL8_ARM_ASSET : null,
+      armSprite: currentLevel === 8 ? LEVEL8_ARM_ASSET : null,
+      drawbridgeSprite: drawbridgeConfig ? DRAWBRIDGE_ASSET : null,
     }
 
     // Which lesson/run this position belongs to. The start position is immutable
@@ -1889,6 +1923,30 @@
         ctx.imageSmoothingEnabled = true
         ctx.imageSmoothingQuality = 'high'
         ctx.drawImage(sheet, b.x0, b.y0, bw, bh, left, top, bw * s, bh * s)
+      }
+
+            // Drawbridge (Level 5 static, Level 6 animated). Same sheet loader as the Level 8 arm.
+      const bridgeSheet = drawbridgeConfig ? prepareArmSheet(imgs.current.drawbridgeSprite) : null
+      if (bridgeSheet) {
+        const { dx, dw } = bgRenderRectRef.current
+        const { canvas: sheet, boxes, armTop } = bridgeSheet
+        const lastBox = boxes[ARM_FRAME_COUNT - 1]
+        const s = (dw * drawbridgeConfig.span) / (lastBox.x1 - lastBox.x0 + 1)
+        const b = boxes[Math.max(0, Math.min(ARM_FRAME_COUNT - 1, drawbridgeFrameRef.current))]
+        const bw = b.x1 - b.x0 + 1
+        const bh = b.y1 - b.y0 + 1
+        // Every frame is anchored by the pillar's base, so the tower never jumps between frames,
+        // and the lowered deck's top edge lands exactly on Pip's walking line.
+        const baseY = feetLine + ((lastBox.y1 - lastBox.y0 + 1) - armTop) * s
+        const left = dx + dw * drawbridgeConfig.x
+        ctx.imageSmoothingEnabled = true
+        ctx.imageSmoothingQuality = 'high'
+        ctx.drawImage(sheet, b.x0, b.y0, bw, bh, left, baseY - bh * s, bw * s, bh * s)
+        if (DEBUG_DRAWBRIDGE) {
+          ctx.strokeStyle = '#ff00ff'
+          ctx.lineWidth = 2
+          ctx.strokeRect(left, baseY - bh * s, bw * s, bh * s)
+        }
       }
 
       const fireImg = imgs.current.fireSprite
@@ -2996,12 +3054,18 @@
         const startTile = pipX
         const gateTile = totalTiles * 0.91
         const walkStart = performance.now()
-        const walkDuration = 2200
+                // walking pace: the duration follows the distance, so it never looks like a run
+        const tileWpx = ctx.canvas.width / Math.max(1, totalTiles)
+        const distPx = Math.abs(
+          getVisualTilePosition(gateTile, totalTiles, bgPath) -
+          getVisualTilePosition(startTile, totalTiles, bgPath)
+        ) * tileWpx
+        const walkDuration = Math.max(1500, (distPx / (ctx.canvas.width * LEVEL2_WALK_SPEED)) * 1000)
 
         const animateToGate = now => {
           if (cancelled || executionVersion !== executionVersionRef.current) return
           const progress = Math.min(1, (now - walkStart) / walkDuration)
-          const eased = 1 - Math.pow(1 - progress, 3)
+          const eased = progress                      // constant pace: no sprint at the start
           pipX = startTile + (gateTile - startTile) * eased
           pipXRef.current = pipX
           lastPipX.current = pipX
@@ -3020,7 +3084,7 @@
           pipAlphaRef.current = visualPipX >= fadeStartPx
             ? Math.max(0, 1 - (visualPipX - fadeStartPx) / 140)
             : 1
-          drawScene(ctx, pipX, Math.sin(progress * Math.PI * 6) * 2, true, 'walk', 0, now - walkStart, pipAlphaRef.current)
+          drawScene(ctx, pipX, Math.sin((now - walkStart) / 110) * 1.2, true, 'walk', 0, now - walkStart, pipAlphaRef.current)
 
           if (progress < 1) {
             raf.current = requestAnimationFrame(animateToGate)
@@ -3240,6 +3304,7 @@
 
         const t0 = performance.now()
         level6FxRef.current = { solved: true, start: t0 }
+        triggerDrawbridgeLower()
 
         setBubble(LEVEL6_BUBBLE_TEXT)
         setDialogueText('')
