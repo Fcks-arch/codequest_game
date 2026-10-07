@@ -3,17 +3,27 @@ const jwt    = require('jsonwebtoken')
 const crypto = require('crypto')
 const db     = require('../config/db')
 const { OAuth2Client } = require('google-auth-library')
-const nodemailer = require('nodemailer')
+
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID)
 
-const mailer = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS
-  }
-})
+async function sendEmail({ to, subject, html }) {
+  const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: {
+      'api-key': process.env.BREVO_API_KEY,
+      'content-type': 'application/json',
+      accept: 'application/json',
+    },
+    body: JSON.stringify({
+      sender: { name: 'CodeQuest', email: process.env.EMAIL_FROM },
+      to: [{ email: to }],
+      subject,
+      htmlContent: html,
+    }),
+  })
+  if (!res.ok) throw new Error(`Brevo ${res.status}: ${await res.text()}`)
+}
 
 // "bsit 1-a", "BSIT 1A", "Bsit1 a" -> "BSIT 1-A"
 const normalizeSection = (raw) => {
@@ -320,8 +330,7 @@ async function forgotPassword(req, res) {
       }
 
       try {
-        await mailer.sendMail({
-          from: `"CodeQuest" <${process.env.EMAIL_USER}>`,
+        await sendEmail({
           to: email,
           subject: 'Reset your CodeQuest password',
           html: `
