@@ -843,7 +843,7 @@
   // rounds of bug reports turned out to be an old copy of this file still
   // being served (stale dev server, browser cache, or the new file not
   // actually saved to the right path) rather than the bug persisting.
-  const BUILD_TAG = 'GameCanvas 2026-10-06a (level 7 construct restored)'
+  const BUILD_TAG = 'GameCanvas 2026-10-07a (gate on levels 1-2)'
 
   export default function GameCanvas({ playToken, introToken = 0, replayToken = 0, onIntroComplete, code, onResult, onCharacterPosition, target, lessonData, resetToken = 0, fullHeight, levelLabel, levelTitle, initialPipPosition, eventOffset = 0, lessonId, executionMode = 'guided', hitToken = 0, onBossDefeated, onIslandComplete }) {
     useEffect(() => { console.log('[CodeQuest]', BUILD_TAG) }, [])
@@ -948,7 +948,7 @@
     const gateConfig = GATE_CONFIGS.default
     const fireConfig = FIRE_CONFIGS[currentLevel === 4 ? 3 : currentLevel] || null
     const librarianConfig = LIBRARIAN_CONFIGS[currentLevel] || null
-    const hasGate = currentLevel === 1
+    const hasGate = currentLevel === 1 || currentLevel === 2
     const isLevelTwo = currentLevel === 2
     const usesSharedStart = currentLevel === 1 || isLevelTwo
     const sharedStartPosition = totalTiles * SHARED_START_FRACTION

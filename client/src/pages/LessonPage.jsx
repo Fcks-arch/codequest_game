@@ -1251,7 +1251,7 @@ function FreeCodePanel({
         overflow: 'hidden'
       }}
     >
-            <div
+      <div
         data-testid="free-code-scroll"
         style={{
           flex: 1,
@@ -1261,9 +1261,6 @@ function FreeCodePanel({
           flexDirection: 'column'
         }}
       >
-           </div>
-
-      {/* NEXT */}
       {/* BRIEFING */}
       <div
         style={{
@@ -1610,7 +1607,7 @@ function FreeCodePanel({
           )}
         </div>
       </div>
-
+</div>{/* end free-code-scroll */}
       {/* NEXT */}
       <div
         style={{
@@ -1635,7 +1632,7 @@ function FreeCodePanel({
         <NextLevelButton
           onNext={onNext}
           isFinalLevel={isFinalLevel}
-          isCleared={completed}
+          isCleared={completed || activeCheck.passed}
           completed={completed}
         />
       </div>
