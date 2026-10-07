@@ -3,9 +3,9 @@ const jwt    = require('jsonwebtoken')
 const crypto = require('crypto')
 const db     = require('../config/db')
 const { OAuth2Client } = require('google-auth-library')
+const nodemailer = require('nodemailer')
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID)
-const nodemailer = require('nodemailer')
 
 const mailer = nodemailer.createTransport({
   service: 'gmail',
@@ -14,25 +14,72 @@ const mailer = nodemailer.createTransport({
     pass: process.env.EMAIL_PASS
   }
 })
+
+// "bsit 1-a", "BSIT 1A", "Bsit1 a" -> "BSIT 1-A"
+const normalizeSection = (raw) => {
+  const cleaned = String(raw || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[\s_\-.]+/g, ' ')
+
+  if (!cleaned) return null
+
+  const m = cleaned.match(/^([A-Z ]+?)\s*(\d+)\s*([A-Z]?)$/)
+  if (!m) return cleaned
+
+  return m[3]
+    ? `${m[1].trim()} ${m[2]}-${m[3]}`
+    : `${m[1].trim()} ${m[2]}`
+}
+
 // POST /api/auth/register
 async function register(req, res) {
-  const { name, email, password, role, section, teacherCode } = req.body
+  const { name, email, password, role, section, teacherCode, class_code } = req.body
   const requestedRole = role === 'instructor' ? 'instructor' : 'student'
-  if (requestedRole === 'instructor' && (!process.env.TEACHER_SIGNUP_CODE || teacherCode !== process.env.TEACHER_SIGNUP_CODE)) return res.status(403).json({ message: 'Invalid teacher private code.' })
+
   if (!name || !email || !password)
     return res.status(400).json({ message: 'Name, email, and password are required.' })
+
+  if (
+    requestedRole === 'instructor' &&
+    (!process.env.TEACHER_SIGNUP_CODE || teacherCode !== process.env.TEACHER_SIGNUP_CODE)
+  )
+    return res.status(403).json({ message: 'Invalid teacher private code.' })
 
   try {
     const [existing] = await db.query('SELECT id FROM users WHERE email = ?', [email])
     if (existing.length > 0)
       return res.status(409).json({ message: 'Email already registered.' })
 
+    // Validate the class code first so a bad code doesn't leave a half-made account.
+    let classToJoin = null
+    if (requestedRole === 'student' && class_code && String(class_code).trim()) {
+      const [classes] = await db.query(
+        'SELECT id FROM classes WHERE class_code = ?',
+        [String(class_code).trim().toUpperCase()]
+      )
+      if (!classes.length)
+        return res.status(404).json({ message: 'Class code not found.' })
+      classToJoin = classes[0].id
+    }
+
+    const cleanSection = normalizeSection(section)
     const hashed = await bcrypt.hash(password, 10)
+
     const [result] = await db.query(
-      'INSERT INTO users (name, email, password, role, section) VALUES (?, ?, ?, ?, ?)',
-      [name, email, hashed, requestedRole, section || null]
+      'INSERT INTO users (name, email, password, role, section, last_login) VALUES (?, ?, ?, ?, ?, CURDATE())',
+      [name, email, hashed, requestedRole, cleanSection]
     )
     await db.query('DELETE FROM student_progress WHERE user_id = ?', [result.insertId])
+
+    if (classToJoin) {
+      await db.query(
+        `INSERT INTO class_students (class_id, student_id)
+         VALUES (?, ?)
+         ON DUPLICATE KEY UPDATE joined_at = joined_at`,
+        [classToJoin, result.insertId]
+      )
+    }
 
     const token = jwt.sign(
       { id: result.insertId, name, role: requestedRole },
@@ -40,7 +87,10 @@ async function register(req, res) {
       { expiresIn: '7d' }
     )
 
-    res.status(201).json({ token, user: { id: result.insertId, name, email, role: requestedRole, section } })
+    res.status(201).json({
+      token,
+      user: { id: result.insertId, name, email, role: requestedRole, section: cleanSection }
+    })
   } catch (err) {
     console.error(err)
     res.status(500).json({ message: 'Server error during registration.' })
@@ -66,7 +116,6 @@ async function login(req, res) {
     if (!match)
       return res.status(401).json({ message: 'Invalid email or password.' })
 
-    // Update last login and streak
     await db.query('UPDATE users SET last_login = CURDATE() WHERE id = ?', [user.id])
 
     const token = jwt.sign(
@@ -102,12 +151,18 @@ async function googleAuth(req, res) {
     })
     const payload = ticket.getPayload()
 
-    let [rows] = await db.query('SELECT * FROM users WHERE email = ? OR google_id = ?', [payload.email, payload.sub])
+    // Prevents account takeover through an unverified Google email.
+    if (!payload.email_verified)
+      return res.status(401).json({ message: 'Your Google email is not verified.' })
+
+    const [rows] = await db.query(
+      'SELECT * FROM users WHERE email = ? OR google_id = ?',
+      [payload.email, payload.sub]
+    )
     let user
     let newAccount = false
 
     if (rows.length === 0) {
-      // New account — created via Google, no local password
       const [result] = await db.query(
         'INSERT INTO users (name, email, password, google_id, role) VALUES (?, ?, NULL, ?, ?)',
         [payload.name, payload.email, payload.sub, 'student']
@@ -119,7 +174,6 @@ async function googleAuth(req, res) {
     } else {
       user = rows[0]
       if (!user.google_id) {
-        // Existing password account signing in with Google for the first time — link it
         await db.query('UPDATE users SET google_id = ? WHERE id = ?', [payload.sub, user.id])
       }
     }
@@ -191,7 +245,7 @@ async function updateProfile(req, res) {
 
     if (typeof section !== 'undefined') {
       updates.push('section = ?')
-      values.push(section ? String(section).trim() : null)
+      values.push(normalizeSection(section))
     }
 
     if (typeof nametag !== 'undefined') {
@@ -258,7 +312,7 @@ async function forgotPassword(req, res) {
         [tokenHash, user.id]
       )
 
-            const clientOrigin = process.env.CLIENT_ORIGIN || 'http://localhost:5173'
+      const clientOrigin = process.env.CLIENT_ORIGIN || 'http://localhost:5173'
       const resetLink = `${clientOrigin}/reset-password?token=${token}`
 
       if (process.env.NODE_ENV !== 'production') {
@@ -321,6 +375,5 @@ async function resetPassword(req, res) {
     res.status(500).json({ message: 'Server error while resetting password.' })
   }
 }
-
 
 module.exports = { register, login, googleAuth, forgotPassword, resetPassword, getMe, getProfile, updateProfile }

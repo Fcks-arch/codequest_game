@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef , useState } from 'react'
 import axios from 'axios'
 import { useNavigate } from 'react-router-dom'
 
@@ -153,6 +153,9 @@ export default function TeacherDashboardPage() {
 
   const [quizzes, setQuizzes] = useState([])
 
+  const [activeClassId, setActiveClassId] = useState('all') // 'all' or a class id
+  const hasLoadedOnce = useRef(false)
+
   // Class Management state
   const [classes, setClasses] = useState([])
   const [showCreateClass, setShowCreateClass] = useState(false)
@@ -191,31 +194,37 @@ export default function TeacherDashboardPage() {
   // ==========================================================
 
   const loadDashboard = async () => {
-    try {
-      setLoading(true)
+  try {
+    // Only show the full-page loader the first time, so changing the
+    // filter doesn't unmount the Quiz Maker and wipe an unsaved quiz.
+    if (!hasLoadedOnce.current) setLoading(true)
 
-      const responses = await Promise.all([
-        axios.get('/api/teacher/overview'),
-        axios.get('/api/teacher/students'),
-        axios.get('/api/teacher/analytics'),
-        axios.get('/api/teacher/leaderboard'),
-        axios.get('/api/teacher/quizzes'),
-      ])
+    const params =
+      activeClassId === 'all' ? {} : { class_id: activeClassId }
 
-      setData(responses[0].data || {})
-      setStudents(responses[1].data || [])
-      setAnalytics(responses[2].data || {})
-      setLeaderboard(responses[3].data || [])
-      setQuizzes(responses[4].data || [])
-    } catch (error) {
-      console.error(
-        'Failed to load teacher dashboard:',
-        error
-      )
-    } finally {
-      setLoading(false)
-    }
+    const responses = await Promise.all([
+      axios.get('/api/teacher/overview', { params }),
+      axios.get('/api/teacher/students', { params }),
+      axios.get('/api/teacher/analytics', { params }),
+      axios.get('/api/teacher/leaderboard', { params }),
+      axios.get('/api/teacher/quizzes'),
+      axios.get('/api/teacher/classes'),
+    ])
+
+    setData(responses[0].data || {})
+    setStudents(responses[1].data || [])
+    setAnalytics(responses[2].data || {})
+    setLeaderboard(responses[3].data || [])
+    setQuizzes(responses[4].data || [])
+    setClasses(Array.isArray(responses[5].data) ? responses[5].data : [])
+
+    hasLoadedOnce.current = true
+  } catch (error) {
+    console.error('Failed to load teacher dashboard:', error)
+  } finally {
+    setLoading(false)
   }
+}
 
 
   // ==========================================================
@@ -462,7 +471,7 @@ export default function TeacherDashboardPage() {
     }
 
     loadDashboard()
-  }, [user, navigate])
+  }, [user, navigate, activeClassId])
 
   useEffect(() => {
     if (
@@ -499,10 +508,38 @@ export default function TeacherDashboardPage() {
     }
   }
 
+const getStudentClassIds = (student) => {
+  const raw = student?.class_ids ?? student?.class_id
+  if (Array.isArray(raw)) return raw.map(String)
+  if (raw === undefined || raw === null || raw === '') return []
+  return [String(raw)]
+}
 
+// Keep only students who joined one of THIS teacher's classes
+// (and the selected class, if a filter is active).
+const scopeStudents = (list = []) => {
+  const myClassIds = classes.map((cls) => String(cls.id))
+
+  return list.filter((student) => {
+    const ids = getStudentClassIds(student)
+
+    // If the API doesn't send class info, trust the server's scoping.
+    if (ids.length === 0) return true
+
+    return ids.some(
+      (id) =>
+        myClassIds.includes(id) &&
+        (activeClassId === 'all' || id === String(activeClassId))
+    )
+  })
+}
+
+  const visibleStudents = scopeStudents(students)
+  const attentionStudents = scopeStudents(data.attention || [])
+  const recentStudents = scopeStudents(data.recent || [])
+  const visibleLeaderboard = scopeStudents(leaderboard)
+  const hasNoClasses = classes.length === 0
   const stats = data.stats || {}
-  const attentionStudents = data.attention || []
-  const recentStudents = data.recent || []
   const profileInitial =
     (profile?.name || user?.name || 'T').trim().charAt(0).toUpperCase()
 
@@ -608,6 +645,32 @@ export default function TeacherDashboardPage() {
           </button>
 
         </header>
+        {['overview', 'students', 'attention', 'analytics', 'leaderboard'].includes(page) && (
+  <div className="teacher-toolbar class-filter-bar">
+    <div className="quiz-select-wrap">
+      <select
+        value={activeClassId}
+        onChange={(event) => setActiveClassId(event.target.value)}
+        disabled={hasNoClasses}
+      >
+        <option value="all">All my classes</option>
+        {classes.map((cls) => (
+          <option key={cls.id} value={cls.id}>
+            {cls.class_name || cls.name || 'Class'}
+            {cls.section ? ` — ${cls.section}` : ''}
+          </option>
+        ))}
+      </select>
+      <ChevronDown size={17} />
+    </div>
+
+    {hasNoClasses && (
+      <span>
+        No classes yet. Create one so students can join with your class code.
+      </span>
+    )}
+  </div>
+)}
 
 
         {/* ====================================================
@@ -1230,7 +1293,7 @@ export default function TeacherDashboardPage() {
 
         {page === 'students' && (
           <Students
-            students={students}
+            students={visibleStudents}
             open={openStudent}
           />
         )}
@@ -1243,7 +1306,7 @@ export default function TeacherDashboardPage() {
         {page === 'attention' && (
 
           <Students
-            students={students.filter((student) => {
+            students={visibleStudents.filter((student) => {
 
               const progress =
                 Number(student.progress) || 0
@@ -1395,9 +1458,9 @@ export default function TeacherDashboardPage() {
 
           <div className="leaderboard-list">
 
-            {leaderboard.length > 0 ? (
+            {visibleLeaderboard.length > 0 ? (
 
-              leaderboard.map(
+              visibleLeaderboard.map(
                 (student, index) => (
 
                   <div
@@ -1751,7 +1814,7 @@ function Students({ students, open }) {
 
 
                 <span>
-                  {student.section || '—'}
+                  {student.class_name || student.section || '—'}
                 </span>
 
 
@@ -2371,6 +2434,16 @@ function QuizManager({
         }
 
         // When switching to Complete the Code, give the teacher
+        // (the inputs only *displayed* them before, the state stayed empty).
+        if (key === 'question_type' && value === 'true_false') {
+          next.option_a = 'True'
+          next.option_b = 'False'
+          next.option_c = ''
+          next.option_d = ''
+          next.correct_answer = ['a', 'b'].includes(next.correct_answer)
+            ? next.correct_answer
+            : 'a'
+        }
         // a usable starter template and one blank.
         if (
           key === 'question_type' &&
@@ -2534,16 +2607,12 @@ function QuizManager({
 
     // True / False questions.
     if (q.question_type === 'true_false') {
-      if (
-        !['a', 'b'].includes(q.correct_answer) ||
-        !q.option_a?.trim() ||
-        !q.option_b?.trim()
-      ) {
-        return `Question ${index + 1}: provide True and False choices and select the correct answer.`
-      }
+  if (!['a', 'b'].includes(q.correct_answer)) {
+    return `Question ${index + 1}: select the correct answer (True or False).`
+  }
 
-      return ''
-    }
+  return ''
+}
 
     // Multiple choice.
     if (
@@ -2569,6 +2638,14 @@ function QuizManager({
         question: q.question.trim(),
         language: q.language || 'java',
         points: Number(q.points) || 1
+      }
+
+      if (q.question_type === 'true_false') {
+        clean.option_a = q.option_a?.trim() || 'True'
+        clean.option_b = q.option_b?.trim() || 'False'
+        clean.option_c = ''
+        clean.option_d = ''
+        if (!['a', 'b'].includes(q.correct_answer)) clean.correct_answer = 'a'
       }
 
       if (q.question_type === 'complete_code') {
