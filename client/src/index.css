@@ -2707,6 +2707,95 @@ textarea:focus { outline: none; }
   font-weight: 700;
 }
 
+.leaderboard-filter {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  padding: 14px 18px;
+  margin: 0;
+  border-bottom: 1px solid rgba(201, 162, 39, 0.25); /* soft gold divider above the table */
+}
+
+.leaderboard-filter label {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  opacity: 0.9;
+  white-space: nowrap;
+}
+
+.leaderboard-filter select {
+  appearance: none;
+  -webkit-appearance: none;
+  min-width: 190px;
+  min-height: 44px;            /* comfortable tap target on phones */
+  padding: 8px 40px 8px 14px;  /* room on the right for the arrow */
+  border-radius: 10px;
+  border: 1px solid rgba(201, 162, 39, 0.45);
+  background-color: rgba(0, 0, 0, 0.45);
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23d9b84a' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.leaderboard-filter select:hover {
+  border-color: rgba(201, 162, 39, 0.8);
+}
+
+.leaderboard-filter select:focus-visible {
+  outline: none;
+  border-color: #d9b84a;
+  box-shadow: 0 0 0 3px rgba(217, 184, 74, 0.25);
+}
+
+.leaderboard-filter select option {
+  background: #14100a;
+  color: #f1e6c8;
+}
+
+.leaderboard-filter__count {
+  margin-left: auto;           /* pushes the count to the right on wide screens */
+  font-size: 0.9rem;
+  opacity: 0.7;
+  white-space: nowrap;
+}
+
+/* Tablets and phones */
+@media (max-width: 600px) {
+  .leaderboard-filter {
+    padding: 12px 14px;
+    gap: 8px;
+  }
+
+  .leaderboard-filter label {
+    flex: 0 0 100%;            /* label on its own line */
+  }
+
+  .leaderboard-filter select {
+    flex: 1 1 100%;            /* select fills the width */
+    min-width: 0;
+  }
+
+  .leaderboard-filter__count {
+    margin-left: 0;
+    flex: 0 0 100%;
+  }
+}
+
+/* Make the table itself scroll sideways instead of breaking the layout */
+.leaderboard-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.leaderboard-table {
+  min-width: 460px;
+}
+
 /* =========================================================
    EMPTY STATE
 ========================================================= */
@@ -5238,40 +5327,51 @@ textarea:focus { outline: none; }
 
 .code-blank-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-  gap: 14px;
-
-  margin-top: 4px;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+  margin-top: 6px;
 }
 
 .code-blank-card {
-  padding: 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  padding: 16px;
 
   border: 1px solid #dce3ea;
-  border-radius: 10px;
-
+  border-radius: 12px;
   background: #ffffff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
 .code-blank-title {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 10px;
 
-  margin-bottom: 12px;
+  margin: 0;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #eef2f6;
 
   color: #334155;
   font-size: 11px;
   font-weight: 800;
-  letter-spacing: 0.4px;
+  letter-spacing: 0.5px;
   text-transform: uppercase;
 }
 
-.code-blank-answer label {
-  display: block;
-  margin-bottom: 6px;
+/* Correct token: green accent */
+.code-blank-answer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
 
-  color: #94a3b8;
+.code-blank-answer label {
+  margin: 0;
+  color: #04aa6d;
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.6px;
@@ -5280,82 +5380,105 @@ textarea:focus { outline: none; }
 
 .code-blank-answer input {
   width: 100%;
-  height: 38px;
+  height: 40px;
+  padding: 0 12px;
 
-  border: 1px solid #cbd5df;
-  border-radius: 6px;
-  padding: 0 11px;
-
-  background: #fff;
+  border: 1px solid #86d9b8;
+  border-radius: 8px;
+  background: #f0fbf6;
   color: #17202b;
 
-  font: 600 12px Poppins, sans-serif;
+  font: 600 13px 'JetBrains Mono', monospace;
   outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .code-blank-answer input:focus {
   border-color: #04aa6d;
+  box-shadow: 0 0 0 3px rgba(4, 170, 109, 0.14);
 }
 
+/* Choices: neutral, 2x2 */
 .code-choice-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 8px;
-
-  margin-top: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
 }
 
 .code-choice-grid label {
   display: flex;
   flex-direction: column;
   gap: 5px;
+  min-width: 0;
+  margin: 0;
 }
 
 .code-choice-grid label > span {
   color: #94a3b8;
   font-size: 9px;
   font-weight: 800;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.6px;
   text-transform: uppercase;
 }
 
 .code-choice-grid input {
-  height: 34px;
+  width: 100%;
+  height: 38px;
+  padding: 0 10px;
 
   border: 1px solid #cbd5df;
-  border-radius: 6px;
-  padding: 0 9px;
-
-  background: #fff;
+  border-radius: 8px;
+  background: #ffffff;
   color: #17202b;
 
-  font: 500 11px Poppins, sans-serif;
+  font: 500 12px 'JetBrains Mono', monospace;
   outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.code-choice-grid input::placeholder,
+.code-blank-answer input::placeholder {
+  color: #b3bfcc;
+  font-weight: 500;
 }
 
 .code-choice-grid input:focus {
   border-color: #04aa6d;
+  box-shadow: 0 0 0 3px rgba(4, 170, 109, 0.12);
 }
 
 .code-answer-note {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
 
-  margin-top: 12px;
+  margin: 0;
+  padding: 9px 12px;
 
+  border-radius: 8px;
+  background: #f0fbf6;
   color: #64748b;
   font-size: 11px;
 }
 
 .code-answer-note svg {
   color: #04aa6d;
+  flex-shrink: 0;
 }
 
 .code-answer-note strong {
   color: #04aa6d;
+  font-family: 'JetBrains Mono', monospace;
+  word-break: break-all;
 }
 
+@media (max-width: 420px) {
+  .code-blank-card { padding: 12px; }
+  .code-choice-grid { grid-template-columns: 1fr; }
+  .code-completion-editor { padding: 12px; }
+}
 /* -----------------------------
    NO-BLANKS EMPTY STATE
 ----------------------------- */

@@ -455,6 +455,79 @@
     } catch (_) { fallback() }
   }
 
+  // Pip's attack sound. Drop your own file at the path below to use it (it should
+// contain the whoosh and the hit, with the hit about 0.4s in, when Pip reaches the boss).
+// If the file is missing, a whoosh + hit is synthesized with the Web Audio API.
+const PIP_ATTACK_SFX = '/assets/sounds/pip-attack.mp3'
+function synthPipAttack() {
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext
+    if (!AC) return
+    if (!bossAudioCtx) bossAudioCtx = new AC()
+    const ac = bossAudioCtx
+    if (ac.state === 'suspended') ac.resume()
+    const t0 = ac.currentTime
+    const master = ac.createGain()
+    master.gain.value = 0.7
+    master.connect(ac.destination)
+
+    const makeNoise = (secs, decayPow) => {
+      const len = Math.floor(ac.sampleRate * secs)
+      const buf = ac.createBuffer(1, len, ac.sampleRate)
+      const d = buf.getChannelData(0)
+      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decayPow)
+      const src = ac.createBufferSource()
+      src.buffer = buf
+      return src
+    }
+
+    // whoosh while Pip dashes (0 -> 0.38s): filtered noise sweeping upward
+    const whoosh = makeNoise(0.4, 0.3)
+    const bp = ac.createBiquadFilter()
+    bp.type = 'bandpass'
+    bp.Q.value = 1.2
+    bp.frequency.setValueAtTime(500, t0)
+    bp.frequency.exponentialRampToValueAtTime(3000, t0 + 0.38)
+    const wg = ac.createGain()
+    wg.gain.setValueAtTime(0.0001, t0)
+    wg.gain.exponentialRampToValueAtTime(0.7, t0 + 0.3)
+    wg.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.42)
+    whoosh.connect(bp); bp.connect(wg); wg.connect(master)
+    whoosh.start(t0)
+
+    // hit when he reaches the boss (0.38s): a sharp crack plus a low thump
+    const th = t0 + 0.38
+    const crack = makeNoise(0.14, 2)
+    const hp = ac.createBiquadFilter()
+    hp.type = 'highpass'
+    hp.frequency.value = 1200
+    const cg = ac.createGain()
+    cg.gain.value = 0.9
+    crack.connect(hp); hp.connect(cg); cg.connect(master)
+    crack.start(th)
+
+    const thump = ac.createOscillator()
+    thump.type = 'sine'
+    thump.frequency.setValueAtTime(170, th)
+    thump.frequency.exponentialRampToValueAtTime(55, th + 0.18)
+    const tg = ac.createGain()
+    tg.gain.setValueAtTime(0.8, th)
+    tg.gain.exponentialRampToValueAtTime(0.0001, th + 0.22)
+    thump.connect(tg); tg.connect(master)
+    thump.start(th); thump.stop(th + 0.25)
+  } catch (_) { /* audio is optional */ }
+}
+function playPipAttackSfx() {
+  let fellBack = false
+  const fallback = () => { if (!fellBack) { fellBack = true; synthPipAttack() } }
+  try {
+    const a = new Audio(PIP_ATTACK_SFX)
+    a.volume = 0.85
+    a.addEventListener('error', fallback)
+    a.play().catch(fallback)
+  } catch (_) { fallback() }
+}
+
   const newBossFx = () => ({
     hitStart: -Infinity,     // when the boss is hit
     attackStart: -Infinity,  // when the boss's counter-attack leaves
@@ -855,7 +928,7 @@
   // rounds of bug reports turned out to be an old copy of this file still
   // being served (stale dev server, browser cache, or the new file not
   // actually saved to the right path) rather than the bug persisting.
-  const BUILD_TAG = 'GameCanvas 2026-10-07a (gate on levels 1-2)'
+  const BUILD_TAG = 'GameCanvas 2026-10-08a (gates L1-2, pip attack sound)'
 
   export default function GameCanvas({ playToken, introToken = 0, replayToken = 0, onIntroComplete, code, onResult, onCharacterPosition, target, lessonData, resetToken = 0, fullHeight, levelLabel, levelTitle, initialPipPosition, eventOffset = 0, lessonId, executionMode = 'guided', hitToken = 0, onBossDefeated, onIslandComplete }) {
     useEffect(() => { console.log('[CodeQuest]', BUILD_TAG) }, [])
@@ -3474,6 +3547,7 @@
         let bubbleFaded = false
         let bubbleRemoved = false
         let impacted = false
+        let dashSfxPlayed = false
 
         const animateBoss = now => {
           if (cancelled || executionVersion !== executionVersionRef.current) return
@@ -3499,6 +3573,12 @@
               setBossDefeated(true)
             }
           }
+
+                  // Pip's attack sound: whoosh while he dashes, hit when he lands
+        if (!dashSfxPlayed && elapsed >= DASH_AT) {
+          dashSfxPlayed = true
+          playPipAttackSfx()
+        }
 
           let pose = 'idle'
           let cx = null
