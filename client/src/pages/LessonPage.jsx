@@ -1251,6 +1251,19 @@ function FreeCodePanel({
         overflow: 'hidden'
       }}
     >
+            <div
+        data-testid="free-code-scroll"
+        style={{
+          flex: 1,
+          minHeight: 0,
+          overflowY: 'auto',
+          display: 'flex',
+          flexDirection: 'column'
+        }}
+      >
+           </div>
+
+      {/* NEXT */}
       {/* BRIEFING */}
       <div
         style={{
@@ -1326,8 +1339,8 @@ function FreeCodePanel({
       {/* CODE EDITOR */}
       <div
         style={{
-          flex: '1 1 260px',
-          minHeight: 0,
+          flex: '0 0 320px',
+          minHeight: 320,
           overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',

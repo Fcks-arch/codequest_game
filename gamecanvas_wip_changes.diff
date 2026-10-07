@@ -1,0 +1,1021 @@
+﻿commit 4e597e5e6cf9c4fbca68da76189b94b3fa66d3c2
+Author: Fcks-arch <johnpaulbarbado398@gmail.com>
+Date:   Mon Oct 5 06:37:26 2026 +0800
+
+    WIP: GameCanvas, Island 1 seeder, new assets
+
+diff --git a/client/src/components/GameCanvas.jsx b/client/src/components/GameCanvas.jsx
+index 2b1a81e..2d2aef8 100644
+--- a/client/src/components/GameCanvas.jsx
++++ b/client/src/components/GameCanvas.jsx
+@@ -24,21 +24,19 @@
+   ΓööΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÿ
+   */
+   const DEFAULT_ASSETS = {
+-    characterIdle: pipIdleSrc,
+-    characterWalk: '/assets/pip-walking.png',
+-    characterRun:  '/assets/pip-running.png',
+-    characterJump: '/assets/pip-jumping.png',
+-    characterLand: '/assets/pip-landing.png',
+-    background:    '/assets/landscapes/terrain1.jpg',
+-    groundTile:    null,  // '/assets/tile.png'
+-    flagSprite:    null,  // '/assets/flag.png'
+-    golemSprite:   '/assets/golem.png',
+-    gateSprite:    '/assets/gate.png',
+-    fireSprite: null,
+-    bgMusic:       '/assets/music/bgmusic.mp3',
+-    sfxJump:       null,
+-    sfxCorrect:    null,
+-    sfxComplete:   null,
++  characterIdle: pipIdleSrc,
++  characterWalk: '/assets/pip-walking.png',
++  characterRun:  '/assets/pip-running.png',
++  characterJump: '/assets/pip-jumping.png',
++  characterLand: '/assets/pip-landing.png',
++  background:    '/assets/landscapes/terrain1.jpg',
++  groundTile:    null,
++  flagSprite:    null,
++  golemSprite:   '/assets/golem.png',
++  gateSprite:    '/assets/gate.png',
++  fireSprite: null,
++  librarianSprite: null,
++  armSprite: null,
+   }
+   const FALLBACK_BACKGROUND = '/assets/background.png'
+ 
+@@ -218,11 +216,14 @@
+   const BG_GRASS_FRACTION = TERRAIN1_BRIDGE_FRACTION
+   const TERRAIN1_TILE_SCALE = 1.16
+   const TERRAIN1_MAX_VISUAL_TILE = 9.25
+-  const MOBILE_LANDSCAPE_PIP_SCALE = typeof window !== 'undefined' && window.innerWidth > window.innerHeight && window.innerWidth <= 960 ? 0.5 : 1
+-  const BASE_PIP_RENDER_WIDTH = 58
+-  const BASE_PIP_RENDER_HEIGHT = 77
+-  const PIP_RENDER_WIDTH = BASE_PIP_RENDER_WIDTH * MOBILE_LANDSCAPE_PIP_SCALE
+-  const PIP_RENDER_HEIGHT = BASE_PIP_RENDER_HEIGHT * MOBILE_LANDSCAPE_PIP_SCALE
++  const PIP_RENDER_WIDTH = 58
++  const PIP_RENDER_HEIGHT = 77
++  // Pip is the same size in every level. He only shrinks on genuinely short canvases
++  // (phone landscape), measured from the live canvas on every draw, not once at import.
++  function pipScaleFor(canvasH) {
++    if (!Number.isFinite(canvasH) || canvasH >= 480) return 1
++    return Math.max(0.55, canvasH / 480)
++  }
+   const START_X = 50
+   const WALK_SPEED = 1.2
+   const WAYPOINT_TARGET_X = 620
+@@ -266,10 +267,8 @@
+   const FIRE_IGNITING = 'IGNITING'
+   const FIRE_LIT = 'LIT'
+   const LEVEL_THREE_CODE = 'int litLanterns = 0;'
+-  // Tile whose visual position lands on the far-right edge of the bridge
+-  // (getVisualTilePosition clamps at TERRAIN1_MAX_VISUAL_TILE).
+-  // Level 3: Pip stays put. This is how long the torches take to finish igniting.
+-const LEVEL_THREE_DONE_DELAY_MS = FIRE_IGNITE_MS * FIRE_LAST_GROW_FRAME + 200
++  const LEVEL_SEVEN_CODE = '// Source code: Pip\'s ledger entry'
++  const LEVEL_THREE_DONE_DELAY_MS = FIRE_IGNITE_MS * FIRE_LAST_GROW_FRAME + 200
+   const FIRE_CONFIGS = {
+     3: {
+       asset: '/assets/fire-ignite-level3.png',
+@@ -282,6 +281,53 @@ const LEVEL_THREE_DONE_DELAY_MS = FIRE_IGNITE_MS * FIRE_LAST_GROW_FRAME + 200
+   }
+   const FIRE_LIGHT_STRENGTH = 1.0   // overall brightness of the surrounding light
+   const FIRE_LIGHT_RADIUS = 0.32    // light reach, as a fraction of the background height
++  // PLACEHOLDER ΓÇö re-measure once construct.png is uploaded, same as the fire sheet.
++// Assumes 5 equal-width columns like golem.png; will need real rects if frames
++// aren't evenly spaced or don't share a ground line.
++const LIBRARIAN_FRAME_COUNT = 5
++const LIBRARIAN_BLOCK_FRAME = 0        // idle, arm raised
++const LIBRARIAN_LAST_STEP_FRAME = 4    // fully stepped aside
++const LIBRARIAN_STEP_MS = 180          // time between frames while stepping aside
++const LIBRARIAN_DORMANT = 'BLOCKING'
++const LIBRARIAN_STEPPING = 'STEPPING'
++const LIBRARIAN_ASIDE = 'ASIDE'
++// Where the construct stands, as a fraction of total route tiles ΓÇö "roughly
++// the chamber's midpoint" per the level doc. Adjust once the map's tile
++// count for level 7 is set.
++const LIBRARIAN_CONFIGS = {
++  7: {
++    asset: '/assets/construct.png',
++    tileFraction: 0.55,
++  },
++}
++  // ΓöÇΓöÇ Level 8: the vault's mechanical bridge-arm ΓöÇΓöÇ
++// PLACEHOLDER ΓÇö fill in once arm.png is generated and measured, same process
++// as construct.png: upload it, I'll run the frame-measurement pass and give
++// you real numbers for ARM_HEIGHT_IN_PIPS / tileFraction / frame rects.
++const ARM_FRAME_COUNT = 5
++const ARM_FOLDED_FRAME = 0      // dormant, collapsed
++const ARM_LAST_EXTEND_FRAME = 4 // fully extended and locked flat
++const ARM_EXTEND_MS = 220       // time between frames while extending
++const ARM_DORMANT = 'FOLDED'
++const ARM_EXTENDING = 'EXTENDING'
++const ARM_LOCKED = 'LOCKED'
++const ARM_HEIGHT_IN_PIPS = 1.2   // the arm is wider than tall; tune once art exists
++const ARM_CONFIGS = {
++  8: {
++    asset: '/assets/landscapes/tealruins.png',
++    tileFraction: 0.78,   // roughly where the gap sits, tiles 7-8 of 9
++  },
++}
++  const LEVEL_SEVEN_DONE_DELAY_MS = LIBRARIAN_STEP_MS * (LIBRARIAN_LAST_STEP_FRAME - LIBRARIAN_BLOCK_FRAME) + 200
++  const LEVEL7_PLATFORM_END_FRACTION = 0.67
++  const LEVEL7_WALK_MS = 2200
++  const LEVEL7_WALK_FPS = 12
++  const LEVEL7_FADE_START_FRACTION = 0.96
++  const LEVEL_EIGHT_CODE = 'int sum = a + b;'
++  const LEVEL8_END_TILE = 9
++  const LEVEL8_WALK_MS = 2600
++  const LEVEL8_WALK_FPS = 12
++  const LEVEL8_WALK_DELAY_MS = ARM_EXTEND_MS * (ARM_LAST_EXTEND_FRAME - ARM_FOLDED_FRAME) + 200
+   const LEVEL4_POPUP_MS = 2200    // how long Pip stands still while "Path is lit!" shows
+   const LEVEL4_RUN_MS = 2600      // run across the bridge
+   const LEVEL_FOUR_MESSAGE = 'Path is lit!'
+@@ -319,7 +365,8 @@ const LEVEL5_SPARK_WINDOW_MS = 2600   // how long sparks fly off the anvil
+ const LEVEL5_TRAIL_START_MS = 500     // first ember lights up
+ const LEVEL5_TRAIL_STEP_MS = 320      // delay between embers
+ const LEVEL5_WALK_DELAY_MS = 1000     // Pip starts walking after this
+-const LEVEL5_WALK_MS = 3400
++const LEVEL5_WALK_MS = 4800
++const LEVEL5_STOP_TILE = 4.5   // stops in front of the tower; raise or lower to taste
+ const LEVEL5_WALK_FPS = 12
+ const LEVEL5_BUBBLE_MS = 3000
+ // Positions as fractions of the background image. Tweak if a glow looks off.
+@@ -335,7 +382,7 @@ const LEVEL5_SPARKS = Array.from({ length: 30 }, (_, i) => ({
+   life: 0.6 + 0.5 * rnd(i + 91),                  // seconds per spark cycle
+ }))
+ 
+-function fillGlow(ctx, cx, cy, r, rgb, a) {z
++function fillGlow(ctx, cx, cy, r, rgb, a) {
+   const g = ctx.createRadialGradient(cx, cy, 2, cx, cy, r)
+   g.addColorStop(0, `rgba(${rgb}, ${a})`)
+   g.addColorStop(1, `rgba(${rgb}, 0)`)
+@@ -344,6 +391,26 @@ function fillGlow(ctx, cx, cy, r, rgb, a) {z
+ }
+ 
+ // ΓöÇΓöÇ Level 6: The Bug Chasm ΓöÇΓöÇ
++const BRIDGE_ASSET = '/assets/landscapes/bridge.png'
++const BRIDGE_FRAME_COUNT = 4
++const BRIDGE_LOWER_START_MS = 400   // pause before the bridge starts moving
++const BRIDGE_LOWER_STEP_MS = 450    // time per frame (4 frames done by ~1.75s)
++// Placement, as fractions of the background image. Tune to your art.
++const BRIDGE_SPRITE = {
++  xFrac: 0.79,
++  widthFrac: 0.42,
++}
++// Measured from bridge.png at 1774x887. If you re-export the file at another
++// size, nothing else needs to change (coordinates are scaled automatically).
++const BRIDGE_SHEET_W = 1774
++const BRIDGE_GROUND_SRC = 497   // grass line, in source pixels
++const BRIDGE_FRAMES = [
++  // l = art left, cl = left cliff left edge, split = cut in the gap, r = art right, k = scale to match frame 0
++  { l: 9,    cl: 29,   split: 250,  r: 435,  k: 1.000 },
++  { l: 446,  cl: 460,  split: 680,  r: 868,  k: 1.051 },
++  { l: 886,  cl: 906,  split: 1127, r: 1335, k: 1.130 },
++  { l: 1345, cl: 1363, split: 1575, r: 1768, k: 1.154 },
++]
+ const LEVEL6_CODE = 'System.out.println("Bridge online");'
+ const LEVEL6_BUBBLE_TEXT = 'Bridge online'
+ const LEVEL6_END_TILE = 9
+@@ -406,13 +473,96 @@ function getWalkMetrics(img) {
+   return result
+ }
+ 
++// ΓöÇΓöÇ Level 7: the Archivist's construct ΓöÇΓöÇ
++const LIBRARIAN_HEIGHT_IN_PIPS = 2.0   // standing height in Pip-heights (try 1.8 to 2.4)
++const LEVEL7_GROUND_FRACTION = 0.71    // walkway height in the library background; lesson data is still a placeholder
++// PLACEHOLDER ΓÇö measure against the real library.png the same way LEVEL5_DOOR/
++// LEVEL5_STAIRS were measured. xDoor is where Pip fades in (the archway from
++// Level 6's fade transition); topX/bottomX/topY trace the painted staircase.
++const LEVEL7_DOOR = { x: 0.045 }
++const LEVEL7_STAIRS = { topX: 0.065, bottomX: 0.11, topY: 0.50, steps: 3 }
++const LEVEL7_INTRO_MS = 2600           // fade-in -> stairs -> stop
++const LEVEL7_INTRO_FADE_MS = 600
++const LEVEL7_ENTRY_TILE = 4.2          // stops on the platform just left of the construct
++const LEVEL7_INTRO_WALK_FPS = 12
++const LIBRARIAN_FOOT_OFFSET_FRAC = 0.05   // nudges the construct down onto the walkway; raise to sink him further, lower toward 0 if he sinks too far
++
++// Removes a baked-in checkerboard (if the PNG has one), then measures the real figure in
++// each of the equal-width frames. Real-transparency sheets are left untouched.
++const librarianSheetCache = new WeakMap()
++function prepareLibrarianSheet(img, cols) {
++  if (!img || !img.naturalWidth) return null
++  if (librarianSheetCache.has(img)) return librarianSheetCache.get(img)
++  let result = null
++  try {
++    const W = img.naturalWidth, H = img.naturalHeight
++    const c = document.createElement('canvas')
++    c.width = W; c.height = H
++    const g = c.getContext('2d', { willReadFrequently: true })
++    g.drawImage(img, 0, 0)
++    const id = g.getImageData(0, 0, W, H)
++    const d = id.data
++
++    // 1) checkerboard cleanup: only runs if the top-left pixel is opaque, light and grey
++    const isLightNeutral = i => d[i + 3] > 200 &&
++      Math.min(d[i], d[i + 1], d[i + 2]) >= 190 &&
++      Math.max(d[i], d[i + 1], d[i + 2]) - Math.min(d[i], d[i + 1], d[i + 2]) <= 14
++    let removed = 0
++    if (isLightNeutral(0)) {
++      const c1 = [d[0], d[1], d[2]]
++      let c2 = null
++      for (let x = 1; x < Math.min(W, 200) && !c2; x++) {
++        const i = x * 4
++        if (isLightNeutral(i) && Math.abs(d[i] - c1[0]) > 6) c2 = [d[i], d[i + 1], d[i + 2]]
++      }
++      const near = (i, col) => Math.abs(d[i] - col[0]) <= 6 && Math.abs(d[i + 1] - col[1]) <= 6 && Math.abs(d[i + 2] - col[2]) <= 6
++      for (let i = 0; i < d.length; i += 4) {
++        if (d[i + 3] === 0) continue
++        if (near(i, c1) || (c2 && near(i, c2))) { d[i + 3] = 0; removed++ }
++      }
++      g.putImageData(id, 0, 0)
++    }
++
++    // 2) measure the figure in each equal-width frame
++    const cw = Math.floor(W / cols)
++    const boxes = []
++    let ux0 = Infinity, uy0 = Infinity, ux1 = -1, uy1 = -1
++    for (let f = 0; f < cols; f++) {
++      let x0 = Infinity, y0 = Infinity, x1 = -1, y1 = -1, n = 0
++      for (let y = 0; y < H; y++) {
++        const row = (y * W + f * cw) * 4
++        for (let x = 0; x < cw; x++) {
++          if (d[row + x * 4 + 3] > 20) {
++            n++
++            if (x < x0) x0 = x
++            if (x > x1) x1 = x
++            if (y < y0) y0 = y
++            if (y > y1) y1 = y
++          }
++        }
++      }
++      if (n > 50) {
++        boxes.push({ x0, y0, x1, y1 })
++        ux0 = Math.min(ux0, x0); uy0 = Math.min(uy0, y0)
++        ux1 = Math.max(ux1, x1); uy1 = Math.max(uy1, y1)
++      } else boxes.push(null)
++    }
++    if (boxes[0]) result = { canvas: c, cw, boxes, ub: { x: ux0, y: uy0, w: ux1 - ux0 + 1, h: uy1 - uy0 + 1 } }
++    console.log('[Construct] sheet', W + 'x' + H, 'cell width', cw, 'checker pixels removed', removed, 'frame boxes', JSON.stringify(boxes))
++  } catch (e) {
++    console.warn('Could not prepare construct sheet:', e)
++  }
++  librarianSheetCache.set(img, result)
++  return result
++}
++
+   // Bump this string whenever this file changes. Log it (see the mount
+   // effect below) so a quick look at the browser console tells you for
+   // certain whether the page is actually running this version ΓÇö several
+   // rounds of bug reports turned out to be an old copy of this file still
+   // being served (stale dev server, browser cache, or the new file not
+   // actually saved to the right path) rather than the bug persisting.
+-  const BUILD_TAG = 'GameCanvas 2026-10-02a (L6 bridge: wheel, light deck, ramp jam)'
++    const BUILD_TAG = 'GameCanvas 2026-10-04a (pip scale, music, construct)'
+ 
+   export default function GameCanvas({ playToken, introToken = 0, replayToken = 0, onIntroComplete, code, onResult, onCharacterPosition, target, lessonData, resetToken = 0, fullHeight, levelLabel, levelTitle, initialPipPosition, eventOffset = 0, lessonId, executionMode = 'guided' }) {
+     useEffect(() => { console.log('[CodeQuest]', BUILD_TAG) }, [])
+@@ -451,6 +601,12 @@ function getWalkMetrics(img) {
+     const fireStateRef = useRef(FIRE_UNLIT)
+     const fireFrameRef = useRef(0)
+     const fireIgniteTimerRef = useRef(null)
++    const librarianStateRef = useRef(LIBRARIAN_DORMANT)
++    const librarianFrameRef = useRef(LIBRARIAN_BLOCK_FRAME)
++    const librarianStepTimerRef = useRef(null)
++    const armStateRef = useRef(ARM_DORMANT)
++    const armFrameRef = useRef(ARM_FOLDED_FRAME)
++    const armExtendTimerRef = useRef(null)
+     const drawSceneRef = useRef(null)
+     const isCutsceneRunningRef = useRef(false)
+     const [runState, setRunState] = useState('idle')
+@@ -485,16 +641,21 @@ function getWalkMetrics(img) {
+     )
+     const gateConfig = GATE_CONFIGS.default
+     const fireConfig = FIRE_CONFIGS[currentLevel === 4 ? 3 : currentLevel] || null
++    const librarianConfig = LIBRARIAN_CONFIGS[currentLevel] || null
++    const armConfig = ARM_CONFIGS[currentLevel] || null
+     const hasGate = currentLevel === 1
+     const isLevelTwo = currentLevel === 2
+     const usesSharedStart = currentLevel === 1 || isLevelTwo
+     const sharedStartPosition = totalTiles * SHARED_START_FRACTION
+-    const entranceStartTile = ENTRANCE_START_TILES[currentLevel] ?? (initialPipPosition || 0)
++    const entranceStartTile = currentLevel === 7
++      ? LEVEL7_ENTRY_TILE
++      : ENTRANCE_START_TILES[currentLevel] ?? (initialPipPosition || 0)
+     const skipsWalkCutscene = currentLevel !== 1
+     const executionVersionRef = useRef(0)
+     const pipAlphaRef = useRef(1)
+     const level5FxRef = useRef({ active: false, start: 0 })
+     const level6FxRef = useRef({ solved: false, start: 0 })
++    const bridgeFrameRef = useRef(0)
+ 
+     useEffect(() => {
+       const img = new Image()
+@@ -641,19 +802,77 @@ function getWalkMetrics(img) {
+     }
+     redraw()
+ 
+-    fireIgniteTimerRef.current = setInterval(() => {
+-      fireFrameRef.current += 1
+-      if (fireFrameRef.current >= FIRE_LAST_GROW_FRAME) {
+-        fireFrameRef.current = FIRE_LAST_GROW_FRAME
+-        fireStateRef.current = FIRE_LIT
+-        clearInterval(fireIgniteTimerRef.current)
+-        fireIgniteTimerRef.current = null
++      fireIgniteTimerRef.current = setInterval(() => {
++    fireFrameRef.current += 1
++    if (fireFrameRef.current >= FIRE_LAST_GROW_FRAME) {
++      fireFrameRef.current = FIRE_LAST_GROW_FRAME
++      fireStateRef.current = FIRE_LIT
++      clearInterval(fireIgniteTimerRef.current)
++      fireIgniteTimerRef.current = null
++    }
++    redraw()
++  }, FIRE_IGNITE_MS)
++}, [])
++
++  const triggerLibrarianStepAside = useCallback(() => {
++    if (librarianStateRef.current !== LIBRARIAN_DORMANT) return
++    if (librarianStepTimerRef.current) {
++      clearInterval(librarianStepTimerRef.current)
++      librarianStepTimerRef.current = null
++    }
++    librarianStateRef.current = LIBRARIAN_STEPPING
++    librarianFrameRef.current = LIBRARIAN_BLOCK_FRAME
++
++    const redraw = () => {
++      if (cvs.current && drawSceneRef.current) {
++        const ctx = cvs.current.getContext('2d')
++        drawSceneRef.current(ctx, lastPipX.current, 0, false, 'idle', 0, performance.now(), pipAlphaRef.current)
++      }
++    }
++    redraw()
++
++        librarianStepTimerRef.current = setInterval(() => {
++      librarianFrameRef.current += 1
++      if (librarianFrameRef.current >= LIBRARIAN_LAST_STEP_FRAME) {
++        librarianFrameRef.current = LIBRARIAN_LAST_STEP_FRAME
++        librarianStateRef.current = LIBRARIAN_ASIDE
++        clearInterval(librarianStepTimerRef.current)
++        librarianStepTimerRef.current = null
++      }
++      redraw()
++    }, LIBRARIAN_STEP_MS)
++  }, [])
++
++  const triggerArmExtend = useCallback(() => {
++    if (armStateRef.current !== ARM_DORMANT) return
++    if (armExtendTimerRef.current) {
++      clearInterval(armExtendTimerRef.current)
++      armExtendTimerRef.current = null
++    }
++    armStateRef.current = ARM_EXTENDING
++    armFrameRef.current = ARM_FOLDED_FRAME
++
++    const redraw = () => {
++      if (cvs.current && drawSceneRef.current) {
++        const ctx = cvs.current.getContext('2d')
++        drawSceneRef.current(ctx, lastPipX.current, 0, false, 'idle', 0, performance.now(), pipAlphaRef.current)
++      }
++    }
++    redraw()
++
++    armExtendTimerRef.current = setInterval(() => {
++      armFrameRef.current += 1
++      if (armFrameRef.current >= ARM_LAST_EXTEND_FRAME) {
++        armFrameRef.current = ARM_LAST_EXTEND_FRAME
++        armStateRef.current = ARM_LOCKED
++        clearInterval(armExtendTimerRef.current)
++        armExtendTimerRef.current = null
+       }
+       redraw()
+-    }, FIRE_IGNITE_MS)
++    }, ARM_EXTEND_MS)
+   }, [])
+ 
+-    const playCompletionSequence = useCallback(() => {
++  const playCompletionSequence = useCallback(() => {
+       updateDialogueAnchor(lastPipX.current)
+       setIsLevelComplete(true)
+       setShowSpeechBubble(true)
+@@ -760,6 +979,7 @@ function getWalkMetrics(img) {
+     function triggerCleanReset() {
+       level5FxRef.current = { active: false, start: 0 }
+       level6FxRef.current = { solved: false, start: 0 }
++      bridgeFrameRef.current = 0
+       if (golemWakeTimeoutRef.current) {
+         clearTimeout(golemWakeTimeoutRef.current)
+         golemWakeTimeoutRef.current = null
+@@ -782,6 +1002,20 @@ function getWalkMetrics(img) {
+       }
+       fireStateRef.current = currentLevel === 4 ? FIRE_LIT : FIRE_UNLIT
+       fireFrameRef.current = currentLevel === 4 ? FIRE_LAST_GROW_FRAME : 0
++      
++      if (librarianStepTimerRef.current) {
++        clearInterval(librarianStepTimerRef.current)
++        librarianStepTimerRef.current = null
++      }
++      librarianStateRef.current = LIBRARIAN_DORMANT
++      librarianFrameRef.current = LIBRARIAN_BLOCK_FRAME
++      
++      if (armExtendTimerRef.current) {
++        clearInterval(armExtendTimerRef.current)
++        armExtendTimerRef.current = null
++      }
++      armStateRef.current = ARM_DORMANT
++      armFrameRef.current = ARM_FOLDED_FRAME
+ 
+       if (cutsceneRef.current) cancelAnimationFrame(cutsceneRef.current)
+       cutsceneRef.current = null
+@@ -822,14 +1056,16 @@ function getWalkMetrics(img) {
+     const getBackgroundImageForCurrentMap = () => {
+       return bgPath
+     }
+-    
+-    const ASSETS = {
+-  ...DEFAULT_ASSETS,
+-  background: getBackgroundImageForCurrentMap(),
+-  gateSprite: hasGate ? gateConfig.asset : null,
+-  fireSprite: fireConfig?.asset || null,
+-}
+ 
++        const ASSETS = {
++      ...DEFAULT_ASSETS,
++      background: getBackgroundImageForCurrentMap(),
++      gateSprite: hasGate ? gateConfig.asset : null,
++      fireSprite: fireConfig?.asset || null,
++      bridgeSprite: (currentLevel === 5 || currentLevel === 6) ? BRIDGE_ASSET : null,
++      librarianSprite: librarianConfig?.asset || null,
++      armSprite: armConfig?.asset || null,
++    }
+     // Which lesson/run this position belongs to. The start position is immutable
+     // for the lesson; live movement remains in this component between steps.
+     const runKey = useRef(null)
+@@ -875,18 +1111,36 @@ function getWalkMetrics(img) {
+         gateAnimTimerRef.current = null
+       }
+       setRunMovedTiles(0)
++
+       if (fireIgniteTimerRef.current) {
+         clearInterval(fireIgniteTimerRef.current)
+         fireIgniteTimerRef.current = null
+       }
+       fireStateRef.current = currentLevel === 4 ? FIRE_LIT : FIRE_UNLIT
+       fireFrameRef.current = currentLevel === 4 ? FIRE_LAST_GROW_FRAME : 0
++
++      if (librarianStepTimerRef.current) {
++        clearInterval(librarianStepTimerRef.current)
++        librarianStepTimerRef.current = null
++      }
++      librarianStateRef.current = LIBRARIAN_DORMANT
++      librarianFrameRef.current = LIBRARIAN_BLOCK_FRAME
++
++      if (armExtendTimerRef.current) {
++        clearInterval(armExtendTimerRef.current)
++        armExtendTimerRef.current = null
++      }
++      armStateRef.current = ARM_DORMANT
++      armFrameRef.current = ARM_FOLDED_FRAME
+       executionVersionRef.current += 1
++
+       if (raf.current) cancelAnimationFrame(raf.current)
++
+       if (idleRaf.current) cancelAnimationFrame(idleRaf.current)
+       idleLoopRunning.current = false
+       triggerCleanReset()
+       const key = `${lessonId}:${target}`
++
+       if (runKey.current !== key) {
+         runKey.current = key
+         // Start on the map containing Pip's saved absolute position. When a
+@@ -942,7 +1196,7 @@ function getWalkMetrics(img) {
+       
+       // Reload assets whenever the background image changes (map transition)
+       const assetsToLoad = Object.entries(ASSETS)
+-        .filter(([, v]) => v && !v.endsWith('.mp3'))
++        .filter(([, v]) => v && !/\.(mp3|ogg|wav|m4a|aac)$/i.test(v))
+         .map(([k, v]) => loadImg(v).then(img => {
+           if (!img && k === 'background' && ASSETS.background !== FALLBACK_BACKGROUND) {
+             return loadImg(FALLBACK_BACKGROUND).then(fallback => ({ key: k, img: fallback }))
+@@ -992,6 +1246,51 @@ function getWalkMetrics(img) {
+     return { frameWidth, srcX0, srcY0, srcW, srcH, destX, destY, destW, destH, visibleLeftX: destX }
+   }
+ 
++    function drawBridge(ctx) {
++  const img = imgs.current.bridgeSprite
++  if (!img || !img.naturalWidth) return
++  const { dx, dw } = bgRenderRectRef.current
++  if (!dw) return
++
++  const sh = img.naturalWidth / BRIDGE_SHEET_W            // sheet-size correction
++  const fh = img.naturalHeight
++  const frameIdx = Math.min(BRIDGE_FRAMES.length - 1, Math.max(0, bridgeFrameRef.current))
++  const F = BRIDGE_FRAMES[frameIdx]
++  const F0 = BRIDGE_FRAMES[0]
++
++  // Base scale from frame 0, same sizing rule as before
++  const s = (dw * BRIDGE_SPRITE.widthFrac) / (img.naturalWidth / BRIDGE_FRAME_COUNT)
++  const sf = s * F.k                                      // this frame's scale
++  const groundY = groundLineRef.current
++
++  // Anchor: frame 0's left cliff edge. Every frame's left cliff lands on the same spot.
++  const frame0W = (img.naturalWidth / BRIDGE_FRAME_COUNT) * s
++  const frame0X = dx + dw * BRIDGE_SPRITE.xFrac - frame0W / 2
++  const anchorX = frame0X + F0.cl * sh * s
++
++  const destY = groundY - BRIDGE_GROUND_SRC * sh * sf
++  const destH = fh * sf
++  const destL = anchorX - (F.cl - F.l) * sh * sf
++  const leftSrcW = (F.split - F.l) * sh
++  const rightSrcW = (F.r - F.split) * sh
++  const splitDestX = destL + leftSrcW * sf
++  const rightEdge = dx + dw + 2                           // stretch the far platform to the screen edge
++
++  ctx.save()
++  ctx.imageSmoothingEnabled = false
++  ctx.drawImage(
++    img,
++    Math.round(F.l * sh), 0, Math.round(leftSrcW), fh,
++    Math.round(destL), Math.round(destY), Math.round(leftSrcW * sf), Math.round(destH)
++  )
++  ctx.drawImage(
++    img,
++    Math.round(F.split * sh), 0, Math.round(rightSrcW), fh,
++    Math.round(splitDestX), Math.round(destY), Math.round(rightEdge - splitDestX), Math.round(destH)
++  )
++  ctx.restore()
++}
++
+     function drawLevel5Effects(ctx, now) {
+     const fx = level5FxRef.current
+     if (!fx.active) return
+@@ -1156,7 +1455,10 @@ function getWalkMetrics(img) {
+         ctx.fillStyle = '#17233B'
+         ctx.fillRect(0, 0, W, H)
+         ctx.drawImage(bg, dx, dy, dw, dh)
+-        feetLine = dy + groundFraction * dh
++        const gf = (currentLevel === 7 && !(lessonGroundFraction > 0))
++          ? LEVEL7_GROUND_FRACTION
++          : groundFraction
++        feetLine = dy + gf * dh
+         ctx.imageSmoothingEnabled = true
+       } else {
+         const sky = ctx.createLinearGradient(0, 0, 0, GY)
+@@ -1282,9 +1584,57 @@ function getWalkMetrics(img) {
+           ctx.fillRect(runeX - glowWidth, runeY - glowHeight, glowWidth * 2, glowHeight * 2)
+           ctx.restore()
+         }
+-        ctx.imageSmoothingEnabled = true
++                ctx.imageSmoothingEnabled = true
+       }
+ 
++      const librarianSheet = librarianConfig ? prepareLibrarianSheet(imgs.current.librarianSprite, LIBRARIAN_FRAME_COUNT) : null
++    if (librarianConfig && librarianSheet) {
++      const { dx, dw, dh } = bgRenderRectRef.current
++      const { canvas: sheet, cw, boxes, ub } = librarianSheet
++      const b0 = boxes[0]
++      // Size: the blocking pose stands LIBRARIAN_HEIGHT_IN_PIPS Pip-heights tall
++      const scale = (PIP_RENDER_HEIGHT * pipScaleFor(H) * LIBRARIAN_HEIGHT_IN_PIPS) / (b0.y1 - b0.y0 + 1)
++      // Anchor on frame 0's feet and horizontal centre. Every frame is drawn with the same
++      // offset, so the step-aside motion inside the cells is preserved.
++      const cx0 = (b0.x0 + b0.x1 + 1) / 2
++      const by0 = b0.y1 + 1
++      const centerX = dx + dw * (librarianConfig.tileFraction ?? 0.5)
++      const footY = feetLine + dh * LIBRARIAN_FOOT_OFFSET_FRAC
++      const frame = Math.max(0, Math.min(LIBRARIAN_FRAME_COUNT - 1, librarianFrameRef.current))
++
++      ctx.imageSmoothingEnabled = true
++      ctx.imageSmoothingQuality = 'high'
++           ctx.drawImage(
++        sheet,
++        frame * cw + ub.x, ub.y, ub.w, ub.h,
++        centerX + (ub.x - cx0) * scale, footY - (by0 - ub.y) * scale, ub.w * scale, ub.h * scale
++      )
++    }
++
++    // PLACEHOLDER draw block for the vault arm ΓÇö uses the same checker-
++    // cleanup/frame-measurement helper as the construct. Re-tune
++    // ARM_HEIGHT_IN_PIPS and tileFraction once arm.png exists.
++    const armSheet = armConfig ? prepareLibrarianSheet(imgs.current.armSprite, ARM_FRAME_COUNT) : null
++    if (armConfig && armSheet) {
++      const { dx, dw, dh } = bgRenderRectRef.current
++      const { canvas: armCanvas, cw: armCw, boxes: armBoxes, ub: armUb } = armSheet
++      const armB0 = armBoxes[0]
++      const armScale = (PIP_RENDER_HEIGHT * pipScaleFor(H) * ARM_HEIGHT_IN_PIPS) / (armB0.y1 - armB0.y0 + 1)
++      const armCx0 = (armB0.x0 + armB0.x1 + 1) / 2
++      const armBy0 = armB0.y1 + 1
++      const armCenterX = dx + dw * (armConfig.tileFraction ?? 0.78)
++      const armFootY = feetLine
++      const armFrame = Math.max(0, Math.min(ARM_FRAME_COUNT - 1, armFrameRef.current))
++
++      ctx.imageSmoothingEnabled = true
++      ctx.imageSmoothingQuality = 'high'
++      ctx.drawImage(
++        armCanvas,
++        armFrame * armCw + armUb.x, armUb.y, armUb.w, armUb.h,
++        armCenterX + (armUb.x - armCx0) * armScale, armFootY - (armBy0 - armUb.y) * armScale, armUb.w * armScale, armUb.h * armScale
++      )
++    }
++
+     const fireImg = imgs.current.fireSprite
+   if (fireConfig && fireImg && fireImg.naturalWidth > 0 && fireImg.naturalHeight > 0 && fireStateRef.current !== FIRE_UNLIT) {
+     const { dx, dy, dw, dh } = bgRenderRectRef.current
+@@ -1354,17 +1704,28 @@ function getWalkMetrics(img) {
+ 
+     ctx.restore()
+   }
++      if (currentLevel === 5 || currentLevel === 6) drawBridge(ctx)
+       if (currentLevel === 5) drawLevel5Effects(ctx, performance.now())
+-      const isLocalLevelSixSuccess = currentLevel === 6 && normalizedCode === LEVEL6_CODE
+       const pipScale = currentLevel === 5 ? LEVEL5_PIP_SCALE : 1
+       const CW = PIP_RENDER_WIDTH * pipScale
+       const movementRenderHeight = PIP_RENDER_HEIGHT * pipScale
+       const totalBob = bounce + idleBob
+       const centerOverride = Number.isFinite(characterCenterX) ? characterCenterX : null
+-      const CX = Number.isFinite(centerOverride)
+-      ? centerOverride - CW / 2
+-      : Math.max(4, Math.min(W - CW - 4, visualTile * tileWidth - CW / 2))
+-      const pipFeetLine = Number.isFinite(characterFeetY) ? characterFeetY : getTileY(px)
++      const clampDrawX = (x, width) => Math.max(0, Math.min(Math.max(0, W - width), x))
++      const gridInset = Math.max(4, tileWidth * 0.04)
++      const CX = clampDrawX(
++        Number.isFinite(centerOverride)
++          ? centerOverride - CW / 2
++          : gridInset + (visualTile + 0.5) * tileWidth - CW / 2,
++        CW
++      )
++      const { dy: backgroundY, dh: backgroundHeight } = bgRenderRectRef.current
++      const level7PipFeetLine = backgroundHeight > 0
++        ? backgroundY + LEVEL7_GROUND_FRACTION * backgroundHeight
++        : getTileY(px)
++      const pipFeetLine = Number.isFinite(characterFeetY)
++        ? characterFeetY
++        : currentLevel === 7 ? level7PipFeetLine : getTileY(px)
+       const CY_base = pipFeetLine - totalBob
+ 
+       const poseKey = pose === 'jump' ? 'characterJump'
+@@ -1390,7 +1751,7 @@ function getWalkMetrics(img) {
+             const cell = wm.cells[walkFrameIndexRef.current % wm.cells.length]
+             const drawHeight = movementRenderHeight
+             const drawWidth = drawHeight * (wm.ub.w / wm.ub.h)
+-            const drawX = Math.round(CX + (CW - drawWidth) / 2)
++            const drawX = Math.round(clampDrawX(CX + (CW - drawWidth) / 2, drawWidth))
+             const drawY = Math.round(CY_base - drawHeight)
+ 
+             ctx.imageSmoothingEnabled = false
+@@ -1434,7 +1795,7 @@ function getWalkMetrics(img) {
+               ? centerOverride - dWidth / 2
+               : startGridX + visualTile * tileSize + (tileSize - dWidth) / 2
+               const rawDestY = CY_base - dHeight
+-              const destX = Number.isFinite(rawDestX) ? rawDestX : 0
++              const destX = clampDrawX(Number.isFinite(rawDestX) ? rawDestX : 0, dWidth)
+               const destY = Number.isFinite(rawDestY) ? rawDestY : feetLine - PIP_RENDER_HEIGHT
+               ctx.globalAlpha = alpha
+               ctx.drawImage(
+@@ -1449,7 +1810,7 @@ function getWalkMetrics(img) {
+             const fw = box.w * spriteScale
+             const fh = box.h * spriteScale
+             const fx = CX + (CW - fw) / 2
+-            const drawX = Number.isFinite(fx) ? fx : 0
++            const drawX = clampDrawX(Number.isFinite(fx) ? fx : 0, fw)
+             const drawY = Number.isFinite(CY_base - fh) ? CY_base - fh : feetLine - PIP_RENDER_HEIGHT
+             ctx.globalAlpha = renderAlpha
+             ctx.drawImage(poseImg, animFrame.x, animFrame.y, animFrame.w, animFrame.h, drawX, drawY, fw, fh)
+@@ -1555,7 +1916,7 @@ function getWalkMetrics(img) {
+         const xTop = dx + dw * LEVEL5_STAIRS.topX
+         const xBottom = Math.min(dx + dw * LEVEL5_STAIRS.bottomX, xStop)
+         const yTop = dy + dh * LEVEL5_STAIRS.topY
+-        const yGround = groundLineRef.current
++        const yGround = dy + dh * LEVEL7_GROUND_FRACTION
+ 
+         const L1 = Math.max(1, xTop - xDoor)
+         const L2 = Math.max(1, xBottom - xTop)
+@@ -1583,10 +1944,94 @@ function getWalkMetrics(img) {
+         movementRunning.current = false
+         pipAlphaRef.current = 1
+       }
+-    }, [introToken, currentLevel, assetsReady, lessonId, resetToken, replayToken]) // eslint-disable-line    
++    }, [introToken, currentLevel, assetsReady, lessonId, resetToken, replayToken]) // eslint-disable-line  
++    
++        // Level 7 intro: Pip fades in at the archway (where the Level 6 fade
++    // transition drops him), walks down the Ledger Hall's stairs, and stops
++    // facing the librarian-construct to submit the comment.
++    useEffect(() => {
++      if (currentLevel !== 7 || !assetsReady) return undefined
++      const ctx = cvs.current?.getContext('2d')
++      if (!ctx) return undefined
++
++      let cancelled = false
++      let frame = 0
++      let start = null
++
++      stopIdleLoop()
++      movementRunning.current = true
++      pipAlphaRef.current = 0
++      walkFrameIndexRef.current = 0
++      lastPipX.current = LEVEL7_ENTRY_TILE
++      currentTileRef.current = LEVEL7_ENTRY_TILE
++
++      const stairStep = t => {
++        const s = Math.min(1, Math.max(0, t)) * LEVEL7_STAIRS.steps
++        const i = Math.min(LEVEL7_STAIRS.steps - 1, Math.floor(s))
++        const u = Math.min(1, (s - i) / 0.4)
++        return (i + u * u * (3 - 2 * u)) / LEVEL7_STAIRS.steps
++      }
++
++      const finish = () => {
++        pipAlphaRef.current = 1
++        pipXRef.current = LEVEL7_ENTRY_TILE
++        lastPipX.current = LEVEL7_ENTRY_TILE
++        currentTileRef.current = LEVEL7_ENTRY_TILE
++        setPipX(LEVEL7_ENTRY_TILE)
++        movementRunning.current = false
++        walkFrameIndexRef.current = 0
++        startIdleLoop()
++        onIntroComplete?.()
++      }
++
++      const step = now => {
++        if (cancelled) return
++        const { dx, dy, dw, dh } = bgRenderRectRef.current
++        if (!dw) { frame = requestAnimationFrame(step); return }
++        if (start === null) start = now
++
++        const elapsed = now - start
++        const p = Math.min(1, elapsed / LEVEL7_INTRO_MS)
++        const e = p * p * (3 - 2 * p)
++
++        const tileW = ctx.canvas.width / Math.max(1, totalTiles)
++        const xStop = Math.max(4, tileW * 0.04) + (LEVEL7_ENTRY_TILE + 0.5) * tileW
++        const xDoor = dx + dw * LEVEL7_DOOR.x
++        const xTop = dx + dw * LEVEL7_STAIRS.topX
++        const xBottom = Math.min(dx + dw * LEVEL7_STAIRS.bottomX, xStop)
++        const yTop = dy + dh * LEVEL7_STAIRS.topY
++        const yGround = dy + dh * LEVEL7_GROUND_FRACTION
++
++        const L1 = Math.max(1, xTop - xDoor)
++        const L2 = Math.max(1, xBottom - xTop)
++        const d = e * Math.max(1, xStop - xDoor)
++        const cx = xDoor + d
++        const fy = d <= L1 ? yTop
++          : d <= L1 + L2 ? yTop + (yGround - yTop) * stairStep((d - L1) / L2)
++          : yGround
++
++        pipAlphaRef.current = Math.min(1, elapsed / LEVEL7_INTRO_FADE_MS)
++        walkFrameIndexRef.current = Math.floor((elapsed / 1000) * LEVEL7_INTRO_WALK_FPS)
++        const onStairs = d > L1 && d < L1 + L2
++        const bounce = onStairs ? 0 : Math.sin(elapsed / 110) * 1.2
++
++        drawScene(ctx, LEVEL7_ENTRY_TILE, bounce, false, 'walk', 0, elapsed, pipAlphaRef.current, fy, cx)
++
++        if (p < 1) { frame = requestAnimationFrame(step); return }
++        finish()
++      }
++
++      frame = requestAnimationFrame(step)
++      return () => {
++        cancelled = true
++        cancelAnimationFrame(frame)
++        movementRunning.current = false
++        pipAlphaRef.current = 1
++      }
++    }, [introToken, currentLevel, assetsReady, lessonId, resetToken, replayToken]) // eslint-disable-line
+ 
+     useEffect(() => {
+-      if (currentLevel === 5) return undefined
++      if (currentLevel === 5 || currentLevel === 7) return undefined
+       if (skipsWalkCutscene && !usesSharedStart) {
+         pipXRef.current = entranceStartTile
+         lastPipX.current = entranceStartTile
+@@ -1736,10 +2181,18 @@ function getWalkMetrics(img) {
+       const isLocalLevelFourSuccess = currentLevel === 4 && isLevelFourSolution(code)
+       const isLocalLevelFiveSuccess = currentLevel === 5 && normalizedCode === LEVEL5_KEYNAME_CODE
+       const isLocalLevelSixSuccess = currentLevel === 6 && normalizedCode === LEVEL6_CODE
++      const isLocalLevelSevenSuccess = currentLevel === 7 && normalizedCode === LEVEL_SEVEN_CODE
++      const isLocalLevelEightSuccess = currentLevel === 8 && normalizedCode === LEVEL_EIGHT_CODE
+ 
+       if (isLocalLevelThreeSuccess) {
+         triggerFireIgnite()
+       }
++      if (isLocalLevelSevenSuccess) {
++        triggerLibrarianStepAside()
++      }
++      if (isLocalLevelEightSuccess) {
++        triggerArmExtend()
++      }
+ 
+         if (isLocalGolemSuccess) {
+       executionFinished = true
+@@ -1752,9 +2205,9 @@ function getWalkMetrics(img) {
+         error: null,
+         finalX: lastPipX.current
+       })
+-      startIdleLoop()
+-    } else if (!isLocalLevelTwoSuccess && !isLocalLevelThreeSuccess && !isLocalLevelFourSuccess && !isLocalLevelFiveSuccess && !isLocalLevelSixSuccess) {
+-      runCodeInWorker(code, lessonId, undefined, executionMode).then(res => {
++      startIdleLoop()    
++    } else if (!isLocalLevelTwoSuccess && !isLocalLevelThreeSuccess && !isLocalLevelFourSuccess && !isLocalLevelFiveSuccess && !isLocalLevelSixSuccess && !isLocalLevelSevenSuccess && !isLocalLevelEightSuccess) {      runCodeInWorker(code, lessonId, undefined, executionMode).then(res => {
++
+         if (cancelled || executionVersion !== executionVersionRef.current) return
+         executionFinished = true
+         events = (res.events || []).slice(Math.max(0, eventOffset))
+@@ -1978,10 +2431,12 @@ function getWalkMetrics(img) {
+   }
+ }
+ 
+-      if (isLocalLevelFiveSuccess) {
++         if (isLocalLevelFiveSuccess) {
+       executionFinished = true
+       const startTile = pipX >= LEVEL5_FLAG_TILE ? LEVEL5_START_TILE : pipX
+-      const endTile = LEVEL5_FLAG_TILE
++      const endTile = LEVEL5_FLAG_TILE          // tile counter target
++      const walkEndTile = totalTiles - 0.3      // walk to the far edge of the platform, same spirit as Level 4/6
++      const fadeStartFraction = 0.85            // only fade in the last stretch, matching Level 4/6
+       pipX = startTile
+       lastPipX.current = startTile
+ 
+@@ -2019,23 +2474,30 @@ function getWalkMetrics(img) {
+         }
+ 
+         const progress = Math.min(1, walkElapsed / LEVEL5_WALK_MS)
+-        const tile = startTile + (endTile - startTile) * progress
++        const eased = progress < 0.5
++          ? 2 * progress * progress
++          : 1 - Math.pow(-2 * progress + 2, 2) / 2
++        const tile = startTile + (walkEndTile - startTile) * eased
+         walkFrameIndexRef.current = Math.floor((walkElapsed / 1000) * LEVEL5_WALK_FPS)
+         const count = Math.min(endTile, Math.floor(progress * endTile))
+         if (count !== lastCount) { lastCount = count; setRunMovedTiles(count) }
+ 
+-        drawScene(ctx, pipX, Math.sin(progress * Math.PI * 12) * 1.5, false, 'walk', 0, walkElapsed, 1, null, centerForTile(tile))
++        const fade = Math.max(0, (eased - fadeStartFraction) / (1 - fadeStartFraction))
++        pipAlphaRef.current = 1 - fade
++
++        drawScene(ctx, pipX, Math.sin(progress * Math.PI * 12) * 1.5, false, 'walk', 0, walkElapsed, pipAlphaRef.current, null, centerForTile(tile))
+ 
+         if (progress < 1) {
+           raf.current = requestAnimationFrame(animate)
+           return
+         }
+ 
+-        pipX = endTile
+-        pipXRef.current = endTile
+-        lastPipX.current = endTile
+-        currentTileRef.current = endTile
+-        setPipX(endTile)
++        pipAlphaRef.current = 0
++        pipX = walkEndTile
++        pipXRef.current = walkEndTile
++        lastPipX.current = walkEndTile
++        currentTileRef.current = walkEndTile
++        setPipX(walkEndTile)
+         setRunMovedTiles(endTile)
+         movementRunning.current = false
+         setIsMoving(false)
+@@ -2046,7 +2508,8 @@ function getWalkMetrics(img) {
+           error: null,
+           finalX: pipX
+         })
+-        startIdleLoop()
++        // No startIdleLoop() ΓÇö Pip has walked off the far edge and should
++        // stay gone, matching how Levels 4 and 6 end their success walk.
+       }
+ 
+       setIsMoving(true)
+@@ -2082,8 +2545,12 @@ function getWalkMetrics(img) {
+       let lastCount = -1
+ 
+       const animate = now => {
+-        if (cancelled || executionVersion !== executionVersionRef.current) return
+-        const elapsed = now - t0
++  if (cancelled || executionVersion !== executionVersionRef.current) return
++  const elapsed = now - t0
++  bridgeFrameRef.current = Math.min(
++    BRIDGE_FRAME_COUNT - 1,
++    Math.floor(Math.max(0, elapsed - BRIDGE_LOWER_START_MS) / BRIDGE_LOWER_STEP_MS)
++  )
+ 
+         if (!bubbleFaded && elapsed > LEVEL6_BUBBLE_MS - 500) { bubbleFaded = true; setBubbleOpacity(0) }
+         if (!bubbleRemoved && elapsed > LEVEL6_BUBBLE_MS) { bubbleRemoved = true; setBubble(null) }
+@@ -2139,6 +2606,122 @@ function getWalkMetrics(img) {
+       }
+     }
+ 
++    if (isLocalLevelSevenSuccess) {
++      executionFinished = true
++      const startTile = pipX
++      const endTile = Math.min(totalTiles - 0.3, totalTiles * LEVEL7_PLATFORM_END_FRACTION)
++      const walkStart = performance.now() + LEVEL_SEVEN_DONE_DELAY_MS
++
++      const animate = now => {
++        if (cancelled || executionVersion !== executionVersionRef.current) return
++
++        // Wait for the construct to finish stepping aside before Pip moves.
++        if (now < walkStart) {
++          drawScene(ctx, pipX, 0, false, 'idle', 0, now, pipAlphaRef.current)
++          raf.current = requestAnimationFrame(animate)
++          return
++        }
++
++        const elapsed = now - walkStart
++        const progress = Math.min(1, elapsed / LEVEL7_WALK_MS)
++        const eased = progress < 0.5
++          ? 2 * progress * progress
++          : 1 - Math.pow(-2 * progress + 2, 2) / 2
++        pipX = startTile + (endTile - startTile) * eased
++        pipXRef.current = pipX
++        lastPipX.current = pipX
++        currentTileRef.current = pipX
++        setPipX(pipX)
++        walkFrameIndexRef.current = Math.floor((elapsed / 1000) * LEVEL7_WALK_FPS)
++        reportProgress(pipX)
++
++        const fade = Math.max(0, (eased - LEVEL7_FADE_START_FRACTION) / (1 - LEVEL7_FADE_START_FRACTION))
++        pipAlphaRef.current = 1 - fade
++
++        drawScene(ctx, pipX, Math.sin(progress * Math.PI * 8) * 2, false, 'walk', 0, elapsed, pipAlphaRef.current)
++
++        if (progress < 1) {
++          raf.current = requestAnimationFrame(animate)
++          return
++        }
++
++        pipAlphaRef.current = 0
++        pipX = endTile
++        pipXRef.current = endTile
++        lastPipX.current = endTile
++        currentTileRef.current = endTile
++        setPipX(endTile)
++        movementRunning.current = false
++        setIsMoving(false)
++        setRunState('idle')
++        onResult && onResult({ events: [], code, error: null, finalX: pipX })
++        // No startIdleLoop() here ΓÇö Pip has walked off and should stay gone,
++        // not pop back into view standing idle at the flag tile. The
++        // librarian's own idle animation keeps redrawing the scene via
++        // triggerLibrarianStepAside's own redraw calls while this runs.
++      }
++
++      setIsMoving(true)
++      raf.current = requestAnimationFrame(animate)
++      return () => {
++        cancelled = true
++        movementRunning.current = false
++        if (raf.current) cancelAnimationFrame(raf.current)
++      }
++    }
++
++    if (isLocalLevelEightSuccess) {
++      executionFinished = true
++      const startTile = pipX
++      const endTile = LEVEL8_END_TILE
++      const t0 = performance.now()
++
++      const animate = now => {
++        if (cancelled || executionVersion !== executionVersionRef.current) return
++        const elapsed = now - t0
++
++        const walkElapsed = elapsed - LEVEL8_WALK_DELAY_MS
++        if (walkElapsed < 0) {
++          drawScene(ctx, pipX, 0, false, 'idle', 0, now, 1)
++          raf.current = requestAnimationFrame(animate)
++          return
++        }
++
++        const progress = Math.min(1, walkElapsed / LEVEL8_WALK_MS)
++        const eased = 1 - Math.pow(1 - progress, 3)
++        pipX = startTile + (endTile - startTile) * eased
++        walkFrameIndexRef.current = Math.floor((walkElapsed / 1000) * LEVEL8_WALK_FPS)
++        reportProgress(pipX)
++        // tile_elevations (Tiles 7-8 at -20) are already honored by getTileY
++        // inside drawScene, so the dip across the arm-bridge happens for free.
++        drawScene(ctx, pipX, Math.sin(progress * Math.PI * 10) * 1.5, false, 'walk', 0, walkElapsed, 1)
++
++        if (progress < 1) {
++          raf.current = requestAnimationFrame(animate)
++          return
++        }
++
++        pipX = endTile
++        pipXRef.current = endTile
++        lastPipX.current = endTile
++        currentTileRef.current = endTile
++        setPipX(endTile)
++        movementRunning.current = false
++        setIsMoving(false)
++        setRunState('success')
++        onResult && onResult({ events: [], code, error: null, finalX: pipX })
++        startIdleLoop()
++      }
++
++      setIsMoving(true)
++      raf.current = requestAnimationFrame(animate)
++      return () => {
++        cancelled = true
++        movementRunning.current = false
++        if (raf.current) cancelAnimationFrame(raf.current)
++      }
++    }
++
+       function step() {
+         if (cancelled || executionVersion !== executionVersionRef.current) return
+         if (i >= events.length) {

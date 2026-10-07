@@ -1,0 +1,208 @@
+﻿
+    const FIRE_CONFIGS = {
+      3: {
+        asset: '/assets/fire-ignite-level3.png',
+        positions: [
+          { xFrac: 0.287, yFrac: 0.53, hFrac: 0.10 },
+          { xFrac: 0.443, yFrac: 0.53, hFrac: 0.10 },
+          { xFrac: 0.736, yFrac: 0.53, hFrac: 0.10 },
+        ],
+      },
+    }
+    const FIRE_LIGHT_STRENGTH = 1.0   // overall brightness of the surrounding light
+    const FIRE_LIGHT_RADIUS = 0.32    // light reach, as a fraction of the background height
+>   // PLACEHOLDER ΓÇö re-measure once construct.png is uploaded, same as the fire sheet.
+  // Assumes 5 equal-width columns like golem.png; will need real rects if frames
+  // aren't evenly spaced or don't share a ground line.
+  const LIBRARIAN_FRAME_COUNT = 5
+  const LIBRARIAN_BLOCK_FRAME = 0        // idle, arm raised
+  const LIBRARIAN_LAST_STEP_FRAME = 4    // fully stepped aside
+  const LIBRARIAN_STEP_MS = 180          // time between frames while stepping aside
+  const LIBRARIAN_DORMANT = 'BLOCKING'
+  const LIBRARIAN_STEPPING = 'STEPPING'
+  const LIBRARIAN_ASIDE = 'ASIDE'
+> // Where the construct stands, as a fraction of total route tiles ΓÇö "roughly
+  // the chamber's midpoint" per the level doc. Adjust once the map's tile
+  // count for level 7 is set.
+  const LIBRARIAN_CONFIGS = {
+    7: {
+>     asset: '/assets/construct.png',
+      tileFraction: 0.55,
+    },
+  }
+    // ΓöÇΓöÇ Level 8: the vault's mechanical bridge-arm ΓöÇΓöÇ
+  // PLACEHOLDER ΓÇö fill in once arm.png is generated and measured, same process
+> // as construct.png: upload it, I'll run the frame-measurement pass and give
+  // you real numbers for ARM_HEIGHT_IN_PIPS / tileFraction / frame rects.
+  const ARM_FRAME_COUNT = 5
+  const ARM_FOLDED_FRAME = 0      // dormant, collapsed
+  const ARM_LAST_EXTEND_FRAME = 4 // fully extended and locked flat
+  const ARM_EXTEND_MS = 220       // time between frames while extending
+  const ARM_DORMANT = 'FOLDED'
+  const ARM_EXTENDING = 'EXTENDING'
+  const ARM_LOCKED = 'LOCKED'
+  const ARM_HEIGHT_IN_PIPS = 1.2   // the arm is wider than tall; tune once art exists
+  const ARM_CONFIGS = {
+    8: {
+      asset: '/assets/landscapes/tealruins.png',
+        }
+      }
+      if (cells.length) {
+        result = { cells, ub: { x: ux0, y: uy0, w: ux1 - ux0 + 1, h: uy1 - uy0 + 1 } }
+      }
+    } catch (e) {
+      console.warn('Could not measure walk sheet:', e)
+    }
+    walkMetricsCache.set(img, result)
+    return result
+  }
+  
+> // ΓöÇΓöÇ Level 7: the Archivist's construct ΓöÇΓöÇ
+  const LIBRARIAN_HEIGHT_IN_PIPS = 2.0   // standing height in Pip-heights (try 1.8 to 2.4)
+  const LEVEL7_GROUND_FRACTION = 0.71    // walkway height in the library background; lesson data is 
+still a placeholder
+  // PLACEHOLDER ΓÇö measure against the real library.png the same way LEVEL5_DOOR/
+  // LEVEL5_STAIRS were measured. xDoor is where Pip fades in (the archway from
+  // Level 6's fade transition); topX/bottomX/topY trace the painted staircase.
+  const LEVEL7_DOOR = { x: 0.045 }
+  const LEVEL7_STAIRS = { topX: 0.065, bottomX: 0.11, topY: 0.50, steps: 3 }
+  const LEVEL7_INTRO_MS = 2600           // fade-in -> stairs -> stop
+  const LEVEL7_INTRO_FADE_MS = 600
+> const LEVEL7_ENTRY_TILE = 4.2          // stops on the platform just left of the construct
+  const LEVEL7_INTRO_WALK_FPS = 12
+> const LIBRARIAN_FOOT_OFFSET_FRAC = 0.05   // nudges the construct down onto the walkway; raise to sink 
+him further, lower toward 0 if he sinks too far
+  
+  // Removes a baked-in checkerboard (if the PNG has one), then measures the real figure in
+  // each of the equal-width frames. Real-transparency sheets are left untouched.
+  const librarianSheetCache = new WeakMap()
+  function prepareLibrarianSheet(img, cols) {
+    if (!img || !img.naturalWidth) return null
+    if (librarianSheetCache.has(img)) return librarianSheetCache.get(img)
+    let result = null
+    try {
+      const W = img.naturalWidth, H = img.naturalHeight
+      const c = document.createElement('canvas')
+      c.width = W; c.height = H
+              if (y < y0) y0 = y
+              if (y > y1) y1 = y
+            }
+          }
+        }
+        if (n > 50) {
+          boxes.push({ x0, y0, x1, y1 })
+          ux0 = Math.min(ux0, x0); uy0 = Math.min(uy0, y0)
+          ux1 = Math.max(ux1, x1); uy1 = Math.max(uy1, y1)
+        } else boxes.push(null)
+      }
+      if (boxes[0]) result = { canvas: c, cw, boxes, ub: { x: ux0, y: uy0, w: ux1 - ux0 + 1, h: uy1 - uy0 
++ 1 } }
+>     console.log('[Construct] sheet', W + 'x' + H, 'cell width', cw, 'checker pixels removed', removed, 
+'frame boxes', JSON.stringify(boxes))
+    } catch (e) {
+>     console.warn('Could not prepare construct sheet:', e)
+    }
+    librarianSheetCache.set(img, result)
+    return result
+  }
+  
+    // Bump this string whenever this file changes. Log it (see the mount
+    // effect below) so a quick look at the browser console tells you for
+    // certain whether the page is actually running this version ΓÇö several
+    // rounds of bug reports turned out to be an old copy of this file still
+    // being served (stale dev server, browser cache, or the new file not
+    // actually saved to the right path) rather than the bug persisting.
+>     const BUILD_TAG = 'GameCanvas 2026-10-04a (pip scale, music, construct)'
+  
+    export default function GameCanvas({ playToken, introToken = 0, replayToken = 0, onIntroComplete, 
+code, onResult, onCharacterPosition, target, lessonData, resetToken = 0, fullHeight, levelLabel, 
+levelTitle, initialPipPosition, eventOffset = 0, lessonId, executionMode = 'guided' }) {
+      useEffect(() => { console.log('[CodeQuest]', BUILD_TAG) }, [])
+      
+      const cvs    = useRef(null)
+      const wrap   = useRef(null)
+      const raf    = useRef(null)
+      const cutsceneRef = useRef(null)
+      const idleRaf = useRef(null)
+      const imgs   = useRef({})
+      const idleImageRef = useRef(null)
+      const [bubble,   setBubble]   = useState(null)
+        const frame = Math.max(0, Math.min(LIBRARIAN_FRAME_COUNT - 1, librarianFrameRef.current))
+  
+        ctx.imageSmoothingEnabled = true
+        ctx.imageSmoothingQuality = 'high'
+             ctx.drawImage(
+          sheet,
+          frame * cw + ub.x, ub.y, ub.w, ub.h,
+          centerX + (ub.x - cx0) * scale, footY - (by0 - ub.y) * scale, ub.w * scale, ub.h * scale
+        )
+      }
+  
+      // PLACEHOLDER draw block for the vault arm ΓÇö uses the same checker-
+>     // cleanup/frame-measurement helper as the construct. Re-tune
+      // ARM_HEIGHT_IN_PIPS and tileFraction once arm.png exists.
+      const armSheet = armConfig ? prepareLibrarianSheet(imgs.current.armSprite, ARM_FRAME_COUNT) : null
+      if (armConfig && armSheet) {
+        const { dx, dw, dh } = bgRenderRectRef.current
+        const { canvas: armCanvas, cw: armCw, boxes: armBoxes, ub: armUb } = armSheet
+        const armB0 = armBoxes[0]
+        const armScale = (PIP_RENDER_HEIGHT * pipScaleFor(H) * ARM_HEIGHT_IN_PIPS) / (armB0.y1 - armB0.y0 
++ 1)
+        const armCx0 = (armB0.x0 + armB0.x1 + 1) / 2
+        const armBy0 = armB0.y1 + 1
+        const armCenterX = dx + dw * (armConfig.tileFraction ?? 0.78)
+        const armFootY = feetLine
+        const armFrame = Math.max(0, Math.min(ARM_FRAME_COUNT - 1, armFrameRef.current))
+  
+        frame = requestAnimationFrame(step)
+        return () => {
+          cancelled = true
+          cancelAnimationFrame(frame)
+          movementRunning.current = false
+          pipAlphaRef.current = 1
+        }
+      }, [introToken, currentLevel, assetsReady, lessonId, resetToken, replayToken]) // 
+eslint-disable-line  
+      
+          // Level 7 intro: Pip fades in at the archway (where the Level 6 fade
+      // transition drops him), walks down the Ledger Hall's stairs, and stops
+>     // facing the librarian-construct to submit the comment.
+      useEffect(() => {
+        if (currentLevel !== 7 || !assetsReady) return undefined
+        const ctx = cvs.current?.getContext('2d')
+        if (!ctx) return undefined
+  
+        let cancelled = false
+        let frame = 0
+        let start = null
+  
+        stopIdleLoop()
+        movementRunning.current = true
+        pipAlphaRef.current = 0
+        }
+      }
+  
+      if (isLocalLevelSevenSuccess) {
+        executionFinished = true
+        const startTile = pipX
+        const endTile = Math.min(totalTiles - 0.3, totalTiles * LEVEL7_PLATFORM_END_FRACTION)
+        const walkStart = performance.now() + LEVEL_SEVEN_DONE_DELAY_MS
+  
+        const animate = now => {
+          if (cancelled || executionVersion !== executionVersionRef.current) return
+  
+>         // Wait for the construct to finish stepping aside before Pip moves.
+          if (now < walkStart) {
+            drawScene(ctx, pipX, 0, false, 'idle', 0, now, pipAlphaRef.current)
+            raf.current = requestAnimationFrame(animate)
+            return
+          }
+  
+          const elapsed = now - walkStart
+          const progress = Math.min(1, elapsed / LEVEL7_WALK_MS)
+          const eased = progress < 0.5
+            ? 2 * progress * progress
+            : 1 - Math.pow(-2 * progress + 2, 2) / 2
+          pipX = startTile + (endTile - startTile) * eased
+
+

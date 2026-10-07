@@ -1,0 +1,249 @@
+﻿        { xFrac: 0.443, yFrac: 0.53, hFrac: 0.10 },
+        { xFrac: 0.736, yFrac: 0.53, hFrac: 0.10 },
+      ],
+    },
+  }
+  const FIRE_LIGHT_STRENGTH = 1.0   // overall brightness of the surrounding light
+  const FIRE_LIGHT_RADIUS = 0.32    // light reach, as a fraction of the background height
+  // PLACEHOLDER ΓÇö re-measure once construct.png is uploaded, same as the fire sheet.
+// Assumes 5 equal-width columns like golem.png; will need real rects if frames
+// aren't evenly spaced or don't share a ground line.
+const LIBRARIAN_FRAME_COUNT = 5
+const LIBRARIAN_BLOCK_FRAME = 0        // idle, arm raised
+const LIBRARIAN_LAST_STEP_FRAME = 4    // fully stepped aside
+const LIBRARIAN_STEP_MS = 180          // time between frames while stepping aside
+const LIBRARIAN_DORMANT = 'BLOCKING'
+const LIBRARIAN_STEPPING = 'STEPPING'
+const LIBRARIAN_ASIDE = 'ASIDE'
+// Where the construct stands, as a fraction of total route tiles ΓÇö "roughly
+// the chamber's midpoint" per the level doc. Adjust once the map's tile
+// count for level 7 is set.
+const LIBRARIAN_CONFIGS = {
+  7: {
+    asset: '/assets/construct.png',
+    tileFraction: 0.55,
+  },
+}
+  // ΓöÇΓöÇ Level 8: the vault's mechanical bridge-arm ΓöÇΓöÇ
+// PLACEHOLDER ΓÇö fill in once arm.png is generated and measured, same process
+// as construct.png: upload it, I'll run the frame-measurement pass and give
+// you real numbers for ARM_HEIGHT_IN_PIPS / tileFraction / frame rects.
+const ARM_FRAME_COUNT = 5
+const ARM_FOLDED_FRAME = 0      // dormant, collapsed
+const ARM_LAST_EXTEND_FRAME = 4 // fully extended and locked flat
+const ARM_EXTEND_MS = 220       // time between frames while extending
+const ARM_DORMANT = 'FOLDED'
+const ARM_EXTENDING = 'EXTENDING'
+const ARM_LOCKED = 'LOCKED'
+-----
+
+// ΓöÇΓöÇ Level 7: the Archivist's construct ΓöÇΓöÇ
+const LIBRARIAN_HEIGHT_IN_PIPS = 2.0   // standing height in Pip-heights (try 1.8 to 2.4)
+const LEVEL7_GROUND_FRACTION = 0.71    // walkway height in the library background; lesson data is still a placeholder
+// PLACEHOLDER ΓÇö measure against the real library.png the same way LEVEL5_DOOR/
+// LEVEL5_STAIRS were measured. xDoor is where Pip fades in (the archway from
+// Level 6's fade transition); topX/bottomX/topY trace the painted staircase.
+const LEVEL7_DOOR = { x: 0.045 }
+const LEVEL7_STAIRS = { topX: 0.065, bottomX: 0.11, topY: 0.50, steps: 3 }
+const LEVEL7_INTRO_MS = 2600           // fade-in -> stairs -> stop
+const LEVEL7_INTRO_FADE_MS = 600
+const LEVEL7_ENTRY_TILE = 4.2          // stops on the platform just left of the construct
+const LEVEL7_INTRO_WALK_FPS = 12
+const LIBRARIAN_FOOT_OFFSET_FRAC = 0.05   // nudges the construct down onto the walkway; raise to sink him further, lower toward 0 if he sinks too far
+
+// Removes a baked-in checkerboard (if the PNG has one), then measures the real figure in
+// each of the equal-width frames. Real-transparency sheets are left untouched.
+const librarianSheetCache = new WeakMap()
+function prepareLibrarianSheet(img, cols) {
+  if (!img || !img.naturalWidth) return null
+  if (librarianSheetCache.has(img)) return librarianSheetCache.get(img)
+  let result = null
+  try {
+    const W = img.naturalWidth, H = img.naturalHeight
+    const c = document.createElement('canvas')
+    c.width = W; c.height = H
+    const g = c.getContext('2d', { willReadFrequently: true })
+    g.drawImage(img, 0, 0)
+    const id = g.getImageData(0, 0, W, H)
+    const d = id.data
+
+    // 1) checkerboard cleanup: only runs if the top-left pixel is opaque, light and grey
+    const isLightNeutral = i => d[i + 3] > 200 &&
+      Math.min(d[i], d[i + 1], d[i + 2]) >= 190 &&
+      Math.max(d[i], d[i + 1], d[i + 2]) - Math.min(d[i], d[i + 1], d[i + 2]) <= 14
+    let removed = 0
+    if (isLightNeutral(0)) {
+      const c1 = [d[0], d[1], d[2]]
+      let c2 = null
+      for (let x = 1; x < Math.min(W, 200) && !c2; x++) {
+        const i = x * 4
+        if (isLightNeutral(i) && Math.abs(d[i] - c1[0]) > 6) c2 = [d[i], d[i + 1], d[i + 2]]
+      }
+      const near = (i, col) => Math.abs(d[i] - col[0]) <= 6 && Math.abs(d[i + 1] - col[1]) <= 6 && Math.abs(d[i + 2] - col[2]) <= 6
+      for (let i = 0; i < d.length; i += 4) {
+        if (d[i + 3] === 0) continue
+        if (near(i, c1) || (c2 && near(i, c2))) { d[i + 3] = 0; removed++ }
+      }
+      g.putImageData(id, 0, 0)
+    }
+
+    // 2) measure the figure in each equal-width frame
+    const cw = Math.floor(W / cols)
+    const boxes = []
+    let ux0 = Infinity, uy0 = Infinity, ux1 = -1, uy1 = -1
+    for (let f = 0; f < cols; f++) {
+      let x0 = Infinity, y0 = Infinity, x1 = -1, y1 = -1, n = 0
+      for (let y = 0; y < H; y++) {
+        const row = (y * W + f * cw) * 4
+        for (let x = 0; x < cw; x++) {
+          if (d[row + x * 4 + 3] > 20) {
+            n++
+            if (x < x0) x0 = x
+            if (x > x1) x1 = x
+            if (y < y0) y0 = y
+            if (y > y1) y1 = y
+          }
+        }
+      }
+      if (n > 50) {
+        boxes.push({ x0, y0, x1, y1 })
+        ux0 = Math.min(ux0, x0); uy0 = Math.min(uy0, y0)
+        ux1 = Math.max(ux1, x1); uy1 = Math.max(uy1, y1)
+      } else boxes.push(null)
+    }
+    if (boxes[0]) result = { canvas: c, cw, boxes, ub: { x: ux0, y: uy0, w: ux1 - ux0 + 1, h: uy1 - uy0 + 1 } }
+    console.log('[Construct] sheet', W + 'x' + H, 'cell width', cw, 'checker pixels removed', removed, 'frame boxes', JSON.stringify(boxes))
+  } catch (e) {
+    console.warn('Could not prepare construct sheet:', e)
+  }
+  librarianSheetCache.set(img, result)
+  return result
+}
+
+  // Bump this string whenever this file changes. Log it (see the mount
+  // effect below) so a quick look at the browser console tells you for
+  // certain whether the page is actually running this version ΓÇö several
+-----
+      }
+    }, [introToken, currentLevel, assetsReady, lessonId, resetToken, replayToken]) // eslint-disable-line  
+    
+        // Level 7 intro: Pip fades in at the archway (where the Level 6 fade
+    // transition drops him), walks down the Ledger Hall's stairs, and stops
+    // facing the librarian-construct to submit the comment.
+    useEffect(() => {
+      if (currentLevel !== 7 || !assetsReady) return undefined
+      const ctx = cvs.current?.getContext('2d')
+      if (!ctx) return undefined
+
+      let cancelled = false
+      let frame = 0
+      let start = null
+
+      stopIdleLoop()
+      movementRunning.current = true
+      pipAlphaRef.current = 0
+      walkFrameIndexRef.current = 0
+      lastPipX.current = LEVEL7_ENTRY_TILE
+      currentTileRef.current = LEVEL7_ENTRY_TILE
+
+      const stairStep = t => {
+        const s = Math.min(1, Math.max(0, t)) * LEVEL7_STAIRS.steps
+        const i = Math.min(LEVEL7_STAIRS.steps - 1, Math.floor(s))
+        const u = Math.min(1, (s - i) / 0.4)
+        return (i + u * u * (3 - 2 * u)) / LEVEL7_STAIRS.steps
+      }
+
+      const finish = () => {
+        pipAlphaRef.current = 1
+        pipXRef.current = LEVEL7_ENTRY_TILE
+        lastPipX.current = LEVEL7_ENTRY_TILE
+        currentTileRef.current = LEVEL7_ENTRY_TILE
+        setPipX(LEVEL7_ENTRY_TILE)
+        movementRunning.current = false
+        walkFrameIndexRef.current = 0
+        startIdleLoop()
+        onIntroComplete?.()
+      }
+
+      const step = now => {
+        if (cancelled) return
+        const { dx, dy, dw, dh } = bgRenderRectRef.current
+        if (!dw) { frame = requestAnimationFrame(step); return }
+        if (start === null) start = now
+-----
+      }
+    }
+
+    if (isLocalLevelSevenSuccess) {
+      executionFinished = true
+      const startTile = pipX
+      const endTile = Math.min(totalTiles - 0.3, totalTiles * LEVEL7_PLATFORM_END_FRACTION)
+      const walkStart = performance.now() + LEVEL_SEVEN_DONE_DELAY_MS
+
+      const animate = now => {
+        if (cancelled || executionVersion !== executionVersionRef.current) return
+
+        // Wait for the construct to finish stepping aside before Pip moves.
+        if (now < walkStart) {
+          drawScene(ctx, pipX, 0, false, 'idle', 0, now, pipAlphaRef.current)
+          raf.current = requestAnimationFrame(animate)
+          return
+        }
+
+        const elapsed = now - walkStart
+        const progress = Math.min(1, elapsed / LEVEL7_WALK_MS)
+        const eased = progress < 0.5
+          ? 2 * progress * progress
+          : 1 - Math.pow(-2 * progress + 2, 2) / 2
+        pipX = startTile + (endTile - startTile) * eased
+        pipXRef.current = pipX
+        lastPipX.current = pipX
+        currentTileRef.current = pipX
+        setPipX(pipX)
+        walkFrameIndexRef.current = Math.floor((elapsed / 1000) * LEVEL7_WALK_FPS)
+        reportProgress(pipX)
+
+        const fade = Math.max(0, (eased - LEVEL7_FADE_START_FRACTION) / (1 - LEVEL7_FADE_START_FRACTION))
+        pipAlphaRef.current = 1 - fade
+
+        drawScene(ctx, pipX, Math.sin(progress * Math.PI * 8) * 2, false, 'walk', 0, elapsed, pipAlphaRef.current)
+
+        if (progress < 1) {
+          raf.current = requestAnimationFrame(animate)
+          return
+        }
+
+        pipAlphaRef.current = 0
+        pipX = endTile
+        pipXRef.current = endTile
+        lastPipX.current = endTile
+        currentTileRef.current = endTile
+        setPipX(endTile)
+        movementRunning.current = false
+        setIsMoving(false)
+        setRunState('idle')
+        onResult && onResult({ events: [], code, error: null, finalX: pipX })
+        // No startIdleLoop() here ΓÇö Pip has walked off and should stay gone,
+        // not pop back into view standing idle at the flag tile. The
+        // librarian's own idle animation keeps redrawing the scene via
+        // triggerLibrarianStepAside's own redraw calls while this runs.
+      }
+
+      setIsMoving(true)
+      raf.current = requestAnimationFrame(animate)
+      return () => {
+        cancelled = true
+        movementRunning.current = false
+        if (raf.current) cancelAnimationFrame(raf.current)
+      }
+    }
+
+    if (isLocalLevelEightSuccess) {
+      executionFinished = true
+      const startTile = pipX
+      const endTile = LEVEL8_END_TILE
+      const t0 = performance.now()
+
+      const animate = now => {
+        if (cancelled || executionVersion !== executionVersionRef.current) return
+        const elapsed = now - t0
