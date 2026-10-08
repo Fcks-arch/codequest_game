@@ -72,7 +72,7 @@ export function XpBar({ xp = 0, level = 1 }) {
   )
   return (
     <div>
-      <div style={{ height:8, background:C.onyx100, borderRadius:999, overflow:'hidden' }}>
+      <div style={{ height:8, background:'rgba(148,163,184,.3)', borderRadius:999, overflow:'hidden' }}>
         <div style={{ height:'100%', width:`${into}%`,
           background:`linear-gradient(90deg,${C.purple},${C.emerald})`,
           borderRadius:999, transition:'width .6s ease' }} />
