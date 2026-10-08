@@ -3,7 +3,7 @@ import axios from 'axios'
 import QuestScene from '../components/QuestScene'
 import { Ico, XpBar } from '../components/UI'
 import { useAuth } from '../context/AuthContext'
-import { completedLessonIds, countTotalActivities } from '../utils/questProgress'
+import { completedLessonIdsWithLocalFallback, countTotalActivities } from '../utils/questProgress'
 
 export default function ProgressPage() {
   const { user } = useAuth()
@@ -28,7 +28,15 @@ export default function ProgressPage() {
       .finally(() => setLoading(false))
   }, [])
 
-  const completedIds = useMemo(() => completedLessonIds(progress), [progress])
+  const completedIds = useMemo(
+  () => completedLessonIdsWithLocalFallback(progress, user?.id),
+  [progress, user?.id]
+)
+const clearedCount = useMemo(
+  () => modules.reduce(
+    (n, m) => n + m.activities.filter(a => completedIds.has(Number(a.id))).length, 0),
+  [modules, completedIds]
+)
   const totalActivities = useMemo(() => countTotalActivities(modules), [modules])
   const recentClears = useMemo(
     () => progress
@@ -40,7 +48,7 @@ export default function ProgressPage() {
 
   const activityTitle = id => {
     for (const module of modules) {
-      const activity = module.activities.find(item => item.id === id)
+      const activity = module.activities.find(item => Number(item.id) === Number(id))
       if (activity) return activity.title
     }
     return `Activity #${id}`
@@ -82,14 +90,14 @@ export default function ProgressPage() {
               </article>
               <article className="progress-summary__card">
                 <Ico n="check" s={22} c="#f5d547" />
-                <b>{completedIds.size}/{totalActivities || '—'}</b>
+                <b>{clearedCount}/{totalActivities || '—'}</b>
                 <span>Activities cleared</span>
               </article>
             </section>
 
             <section className="progress-xp-panel">
               <h2>Level progress</h2>
-              <XpBar xp={user?.xp || 0} />
+              <XpBar xp={user?.xp || 0} level={user?.level || 1} />
             </section>
 
             <section className="progress-islands">
@@ -97,7 +105,7 @@ export default function ProgressPage() {
               <div className="progress-islands__list">
                 {modules.map(module => {
                   const total = module.activities.length
-                  const done = module.activities.filter(activity => completedIds.has(activity.id)).length
+                  const done = module.activities.filter(activity => completedIds.has(Number(activity.id))).length
                   const pct = total ? Math.round((done / total) * 100) : 0
                   return (
                     <article key={module.id} className="progress-island-row">

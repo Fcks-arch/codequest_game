@@ -52,7 +52,8 @@ export default function DashboardPage() {
     () => completedLessonIdsWithLocalFallback(progress, user?.id),
     [progress, user?.id]
   )
-  const clearedCount = completedIds.size
+  const clearedCount = modules.reduce(
+  (n, m) => n + m.activities.filter(a => completedIds.has(Number(a.id))).length, 0)
   const islandStatuses = useMemo(
     () => getIslandStatuses(modules, completedIds, userUnlocked, progress),
     [modules, completedIds, progress, userUnlocked]
@@ -84,7 +85,7 @@ export default function DashboardPage() {
           </div>
           <div className="quest-progress">
             <b>{clearedCount}</b><span>activities cleared</span>
-            <XpBar xp={user?.xp || 0} />
+            <XpBar xp={user?.xp || 0} level={user?.level || 1} />
           </div>
         </section>
 

@@ -64,7 +64,8 @@ export default function QuestPage() {
   )
 
   const completedIds = useMemo(() => completedLessonIdsWithLocalFallback(progress, user?.id), [progress, user?.id])
-  const clearedCount = completedIds.size
+  const clearedCount = modules.reduce(
+  (n, m) => n + m.activities.filter(a => completedIds.has(Number(a.id))).length, 0)
   const islandStatuses = useMemo(
     () => getIslandStatuses(modules, completedIds, userUnlocked, progress),
     [modules, completedIds, progress, userUnlocked]
