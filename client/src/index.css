@@ -3484,7 +3484,7 @@ textarea:focus { outline: none; }
 .quiz-alert.success { background:#123422; border:1px solid #24653f; color:#7ee2a2; }
 .quiz-alert.error { background:#351c22; border:1px solid #6a3039; color:#ff9ba4; }
 
-.quiz-builder-card { background:#f8fafc; color:#17202b; border-radius:16px; overflow:hidden; border:1px solid #d9e0e7; box-shadow:0 14px 35px rgba(0,0,0,.16); }
+.quiz-builder-card { background:#f8fafc; color:#17202b; border-radius:16px; overflow:clip; border:1px solid #d9e0e7; box-shadow:0 14px 35px rgba(0,0,0,.16); }
 .quiz-builder-top { display:grid; grid-template-columns:1.5fr 1fr; gap:20px; padding:25px; background:#fff; border-bottom:1px solid #e5e9ee; }
 .quiz-field label { display:block; margin-bottom:8px; font-size:11px; font-weight:800; color:#475569; text-transform:uppercase; letter-spacing:.7px; }
 .quiz-field label span { text-transform:none; font-weight:500; color:#94a3b8; }
@@ -3557,7 +3557,178 @@ textarea:focus { outline: none; }
 .quiz-empty strong { color:#b9c2cc; font-size:13px; }
 .quiz-empty svg { color:#4ade80; margin-bottom:4px; }
 
+/* =========================================================
+   QUIZ BUILDER — QUESTION NAVIGATOR / COLLAPSE / STICKY ACTIONS
+========================================================= */
 
+.question-nav {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+
+  padding: 12px 25px;
+
+  background: #ffffff;
+  border-bottom: 1px solid #dbe2e9;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
+}
+
+.question-nav-chips {
+  flex: 1 1 320px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+
+  max-height: 84px;
+  overflow-y: auto;
+}
+
+.question-chip {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+
+  border: 2px solid #cbd5df;
+  border-radius: 8px;
+
+  background: #f1f5f9;
+  color: #475569;
+
+  font: 800 11px Poppins, sans-serif;
+  cursor: pointer;
+
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.question-chip:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(15, 23, 42, 0.12);
+}
+
+.question-chip.is-done {
+  border-color: #04aa6d;
+  background: #f0fbf6;
+  color: #04aa6d;
+}
+
+.question-chip.is-incomplete {
+  border-color: #f59e0b;
+  background: #fff7e6;
+  color: #b45309;
+}
+
+.question-nav-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.question-nav-actions .quiz-add-btn {
+  padding: 8px 12px;
+  font-size: 11px;
+}
+
+.question-nav-legend {
+  flex: 0 0 100%;
+  color: #94a3b8;
+  font-size: 10px;
+}
+
+/* ---------- collapsible question cards ---------- */
+
+.quiz-question-card {
+  scroll-margin-top: 130px;
+}
+
+.quiz-question-card.is-collapsed {
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+
+.quiz-question-card.is-collapsed > :not(.quiz-question-header) {
+  display: none;
+}
+
+.icon-toggle {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+
+  padding: 7px;
+
+  border: 0;
+  border-radius: 6px;
+
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+}
+
+.icon-toggle:hover {
+  background: #eef2f6;
+  color: #17202b;
+}
+
+.icon-toggle svg {
+  transition: transform 0.15s ease;
+}
+
+.question-type-badge {
+  flex: 0 0 auto;
+
+  padding: 5px 10px;
+
+  border-radius: 20px;
+
+  background: #e8fbf3;
+  color: #04aa6d;
+
+  font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+/* ---------- sticky Publish / Save bar ---------- */
+
+.quiz-builder-card > .quiz-builder-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 4;
+  box-shadow: 0 -6px 14px rgba(15, 23, 42, 0.08);
+}
+
+@media (max-width: 700px) {
+  .question-nav {
+    padding: 10px 14px;
+  }
+
+  .question-nav-actions {
+    width: 100%;
+  }
+
+  .question-nav-actions .quiz-add-btn {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .quiz-question-card {
+    scroll-margin-top: 150px;
+  }
+}
+
+/* Your 600px rule stacks the 3 buttons full width, which would make a
+   tall sticky bar on phones, so keep it in normal flow there. */
+@media (max-width: 600px) {
+  .quiz-builder-card > .quiz-builder-actions {
+    position: static;
+    box-shadow: none;
+  }
+}
 /* =========================================================
    CODEQUEST - W3SCHOOLS INSPIRED QUIZ EXPERIENCE
    ========================================================= */
@@ -7354,61 +7525,5 @@ textarea:focus { outline: none; }
 @media (max-width: 700px) {
   .quiz-view-tabs {
     overflow-x: auto;
-  }
-}
-@media screen and (max-width: 600px) {
-  nav.quest-nav {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px 10px;
-    padding-left: 12px;
-    padding-right: 12px;
-    max-width: 100%;
-    box-sizing: border-box;
-  }
-
-  /* Brand shrinks and truncates instead of sitting under the hamburger */
-  nav.quest-nav .brand {
-    flex: 1 1 0;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-size: 16px;
-  }
-
-  nav.quest-nav .quest-nav__menu-toggle {
-    position: static;
-    flex: 0 0 auto;
-    margin-left: auto;
-  }
-
-  /* Opened menu takes its own full-width row */
-  nav.quest-nav .quest-nav__tabs {
-    order: 2;
-    flex: 1 1 100%;
-    min-width: 0;
-  }
-
-  /* Stats get their own row under the brand, and wrap instead of being cut off */
-  nav.quest-nav .quest-nav__stats {
-    order: 3;
-    flex: 1 1 100%;
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px;
-    min-width: 0;
-  }
-
-  nav.quest-nav .quest-nav__stats > * {
-    font-size: 11px;
-    white-space: nowrap;
-  }
-
-  nav.quest-nav .quest-nav__profile {
-    flex: 0 0 auto;
-    margin-left: auto;
   }
 }

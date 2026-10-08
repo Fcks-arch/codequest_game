@@ -47,6 +47,9 @@ import TeacherNav from '../components/TeacherNav'
 // QUESTION TYPES
 // ============================================================
 
+// Maximum number of questions allowed in a single quiz.
+const MAX_QUESTIONS = 50
+
 const QUESTION_TYPES = [
   {
     value: 'mcq',
@@ -194,37 +197,37 @@ export default function TeacherDashboardPage() {
   // ==========================================================
 
   const loadDashboard = async () => {
-  try {
-    // Only show the full-page loader the first time, so changing the
-    // filter doesn't unmount the Quiz Maker and wipe an unsaved quiz.
-    if (!hasLoadedOnce.current) setLoading(true)
+    try {
+      // Only show the full-page loader the first time, so changing the
+      // filter doesn't unmount the Quiz Maker and wipe an unsaved quiz.
+      if (!hasLoadedOnce.current) setLoading(true)
 
-    const params =
-      activeClassId === 'all' ? {} : { class_id: activeClassId }
+      const params =
+        activeClassId === 'all' ? {} : { class_id: activeClassId }
 
-    const responses = await Promise.all([
-      axios.get('/api/teacher/overview', { params }),
-      axios.get('/api/teacher/students', { params }),
-      axios.get('/api/teacher/analytics', { params }),
-      axios.get('/api/teacher/leaderboard', { params }),
-      axios.get('/api/teacher/quizzes'),
-      axios.get('/api/teacher/classes'),
-    ])
+      const responses = await Promise.all([
+        axios.get('/api/teacher/overview', { params }),
+        axios.get('/api/teacher/students', { params }),
+        axios.get('/api/teacher/analytics', { params }),
+        axios.get('/api/teacher/leaderboard', { params }),
+        axios.get('/api/teacher/quizzes'),
+        axios.get('/api/teacher/classes'),
+      ])
 
-    setData(responses[0].data || {})
-    setStudents(responses[1].data || [])
-    setAnalytics(responses[2].data || {})
-    setLeaderboard(responses[3].data || [])
-    setQuizzes(responses[4].data || [])
-    setClasses(Array.isArray(responses[5].data) ? responses[5].data : [])
+      setData(responses[0].data || {})
+      setStudents(responses[1].data || [])
+      setAnalytics(responses[2].data || {})
+      setLeaderboard(responses[3].data || [])
+      setQuizzes(responses[4].data || [])
+      setClasses(Array.isArray(responses[5].data) ? responses[5].data : [])
 
-    hasLoadedOnce.current = true
-  } catch (error) {
-    console.error('Failed to load teacher dashboard:', error)
-  } finally {
-    setLoading(false)
+      hasLoadedOnce.current = true
+    } catch (error) {
+      console.error('Failed to load teacher dashboard:', error)
+    } finally {
+      setLoading(false)
+    }
   }
-}
 
 
   // ==========================================================
@@ -508,31 +511,31 @@ export default function TeacherDashboardPage() {
     }
   }
 
-const getStudentClassIds = (student) => {
-  const raw = student?.class_ids ?? student?.class_id
-  if (Array.isArray(raw)) return raw.map(String)
-  if (raw === undefined || raw === null || raw === '') return []
-  return [String(raw)]
-}
+  const getStudentClassIds = (student) => {
+    const raw = student?.class_ids ?? student?.class_id
+    if (Array.isArray(raw)) return raw.map(String)
+    if (raw === undefined || raw === null || raw === '') return []
+    return [String(raw)]
+  }
 
-// Keep only students who joined one of THIS teacher's classes
-// (and the selected class, if a filter is active).
-const scopeStudents = (list = []) => {
-  const myClassIds = classes.map((cls) => String(cls.id))
+  // Keep only students who joined one of THIS teacher's classes
+  // (and the selected class, if a filter is active).
+  const scopeStudents = (list = []) => {
+    const myClassIds = classes.map((cls) => String(cls.id))
 
-  return list.filter((student) => {
-    const ids = getStudentClassIds(student)
+    return list.filter((student) => {
+      const ids = getStudentClassIds(student)
 
-    // If the API doesn't send class info, trust the server's scoping.
-    if (ids.length === 0) return true
+      // If the API doesn't send class info, trust the server's scoping.
+      if (ids.length === 0) return true
 
-    return ids.some(
-      (id) =>
-        myClassIds.includes(id) &&
-        (activeClassId === 'all' || id === String(activeClassId))
-    )
-  })
-}
+      return ids.some(
+        (id) =>
+          myClassIds.includes(id) &&
+          (activeClassId === 'all' || id === String(activeClassId))
+      )
+    })
+  }
 
   const visibleStudents = scopeStudents(students)
   const attentionStudents = scopeStudents(data.attention || [])
@@ -645,32 +648,33 @@ const scopeStudents = (list = []) => {
           </button>
 
         </header>
-        {['overview', 'students', 'attention', 'analytics', 'leaderboard'].includes(page) && (
-  <div className="teacher-toolbar class-filter-bar">
-    <div className="quiz-select-wrap">
-      <select
-        value={activeClassId}
-        onChange={(event) => setActiveClassId(event.target.value)}
-        disabled={hasNoClasses}
-      >
-        <option value="all">All my classes</option>
-        {classes.map((cls) => (
-          <option key={cls.id} value={cls.id}>
-            {cls.class_name || cls.name || 'Class'}
-            {cls.section ? ` — ${cls.section}` : ''}
-          </option>
-        ))}
-      </select>
-      <ChevronDown size={17} />
-    </div>
 
-    {hasNoClasses && (
-      <span>
-        No classes yet. Create one so students can join with your class code.
-      </span>
-    )}
-  </div>
-)}
+        {['overview', 'students', 'attention', 'analytics', 'leaderboard'].includes(page) && (
+          <div className="teacher-toolbar class-filter-bar">
+            <div className="quiz-select-wrap">
+              <select
+                value={activeClassId}
+                onChange={(event) => setActiveClassId(event.target.value)}
+                disabled={hasNoClasses}
+              >
+                <option value="all">All my classes</option>
+                {classes.map((cls) => (
+                  <option key={cls.id} value={cls.id}>
+                    {cls.class_name || cls.name || 'Class'}
+                    {cls.section ? ` — ${cls.section}` : ''}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown size={17} />
+            </div>
+
+            {hasNoClasses && (
+              <span>
+                No classes yet. Create one so students can join with your class code.
+              </span>
+            )}
+          </div>
+        )}
 
 
         {/* ====================================================
@@ -2180,8 +2184,15 @@ function StudentModal({ data, close }) {
 // QUIZ MANAGER
 // ============================================================
 
+// Stable per-question id. Used as the React key and for
+// collapse / jump-to-question, because the array index shifts
+// whenever a question is removed.
+let questionUidCounter = 0
+const nextUid = () => `q-${Date.now()}-${++questionUidCounter}`
+
 function createBlankQuestion() {
   return {
+    uid: nextUid(),
     question: '',
     question_type: 'mcq',
     language: 'java',
@@ -2299,6 +2310,32 @@ function QuizManager({
   const [archivedQuizzes, setArchivedQuizzes] = useState([])
   const [archivedLoading, setArchivedLoading] = useState(false)
   const [archivedLoaded, setArchivedLoaded] = useState(false)
+
+  // ==========================================================
+  // COLLAPSE / JUMP-TO-QUESTION
+  // ==========================================================
+
+  const [collapsed, setCollapsed] = useState({})
+
+  const toggleCollapsed = (uid) =>
+    setCollapsed((prev) => ({ ...prev, [uid]: !prev[uid] }))
+
+  const collapseAll = () =>
+    setCollapsed(
+      Object.fromEntries(questions.map((q) => [q.uid, true]))
+    )
+
+  const expandAll = () => setCollapsed({})
+
+  const jumpToQuestion = (uid) => {
+    setCollapsed((prev) => ({ ...prev, [uid]: false }))
+
+    setTimeout(() => {
+      document
+        .getElementById(`question-${uid}`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 100)
+  }
 
   // ==========================================================
   // LOAD ARCHIVED QUIZZES (lazy — only once the Archived tab
@@ -2433,8 +2470,7 @@ function QuizManager({
           [key]: value
         }
 
-        // When switching to Complete the Code, give the teacher
-        // (the inputs only *displayed* them before, the state stayed empty).
+        // When switching to True / False, fill in the two fixed options.
         if (key === 'question_type' && value === 'true_false') {
           next.option_a = 'True'
           next.option_b = 'False'
@@ -2444,6 +2480,8 @@ function QuizManager({
             ? next.correct_answer
             : 'a'
         }
+
+        // When switching to Complete the Code, give the teacher
         // a usable starter template and one blank.
         if (
           key === 'question_type' &&
@@ -2524,12 +2562,12 @@ function QuizManager({
   // ==========================================================
 
   const addQuestion = () => {
-    if (questions.length >= 20) return
+    if (questions.length >= MAX_QUESTIONS) return
 
-    setQuestions((prev) => [
-      ...prev,
-      createBlankQuestion()
-    ])
+    const fresh = createBlankQuestion()
+
+    setQuestions((prev) => [...prev, fresh])
+    jumpToQuestion(fresh.uid)
   }
 
   // ==========================================================
@@ -2607,12 +2645,12 @@ function QuizManager({
 
     // True / False questions.
     if (q.question_type === 'true_false') {
-  if (!['a', 'b'].includes(q.correct_answer)) {
-    return `Question ${index + 1}: select the correct answer (True or False).`
-  }
+      if (!['a', 'b'].includes(q.correct_answer)) {
+        return `Question ${index + 1}: select the correct answer (True or False).`
+      }
 
-  return ''
-}
+      return ''
+    }
 
     // Multiple choice.
     if (
@@ -2694,6 +2732,7 @@ function QuizManager({
 
       if (validationError) {
         setError(validationError)
+        jumpToQuestion(questions[i].uid)
         return
       }
     }
@@ -2743,6 +2782,7 @@ function QuizManager({
       setTitle('')
       setLessonId('')
       setClassIds([])
+      setCollapsed({})
       setQuestions([
         createBlankQuestion()
       ])
@@ -2787,6 +2827,7 @@ function QuizManager({
       setTitle(loaded?.title || quiz.title || '')
       setLessonId(loaded?.lesson_id ?? quiz.lesson_id ?? '')
       setClassIds(getQuizClassIds(loaded || quiz))
+      setCollapsed({})
       setQuestions(
         loadedQuestions.length
           ? loadedQuestions.map((q) => ({
@@ -2851,6 +2892,7 @@ function QuizManager({
       const validationError = validateQuestion(questions[i], i)
       if (validationError) {
         setError(validationError)
+        jumpToQuestion(questions[i].uid)
         return
       }
     }
@@ -2908,6 +2950,7 @@ function QuizManager({
     setTitle('')
     setLessonId('')
     setClassIds([])
+    setCollapsed({})
     setQuestions([createBlankQuestion()])
   }
 
@@ -3058,8 +3101,7 @@ function QuizManager({
 
     setScoreViewer({
       quiz,
-      results: [],
-      summary: null
+      results: []
     })
 
     setScoresLoading(true)
@@ -3088,11 +3130,10 @@ function QuizManager({
   }
 
   // ==========================================================
-  // RENDER
-  // ==========================================================
-
-  // ==========================================================
-  // SCORES: SECTION FILTER
+  // SCORES: SECTION FILTER + SUMMARY
+  // The backend only returns { quiz, results } where each row
+  // has score / total / taken_at, so the percentage, average
+  // and highest score are all computed here.
   // ==========================================================
 
   const getResultSection = (result) =>
@@ -3116,27 +3157,27 @@ function QuizManager({
             getResultSection(result) === scoreSection
         )
 
-  const filteredPercentages = filteredResults.map(
-    (result) => Number(result.percentage) || 0
-  )
+  const filteredPercentages = filteredResults.map((result) => {
+    const total = Number(result.total) || 0
+    const score = Number(result.score) || 0
 
-  const scoreSummary =
-    scoreSection === 'all' && scoreViewer?.summary
-      ? scoreViewer.summary
-      : {
-          attempts: filteredResults.length,
-          average: filteredPercentages.length
-            ? Math.round(
-                filteredPercentages.reduce(
-                  (sum, value) => sum + value,
-                  0
-                ) / filteredPercentages.length
-              )
-            : 0,
-          highest: filteredPercentages.length
-            ? Math.max(...filteredPercentages)
-            : 0
-        }
+    return total > 0 ? Math.round((score / total) * 100) : 0
+  })
+
+  const scoreSummary = {
+    attempts: filteredResults.length,
+    average: filteredPercentages.length
+      ? Math.round(
+          filteredPercentages.reduce(
+            (sum, value) => sum + value,
+            0
+          ) / filteredPercentages.length
+        )
+      : 0,
+    highest: filteredPercentages.length
+      ? Math.max(...filteredPercentages)
+      : 0
+  }
 
   // `quizzes` (the prop) already holds only active quizzes —
   // the server's listTeacher excludes archived ones. Archived
@@ -3144,6 +3185,10 @@ function QuizManager({
   const activeQuizzes = quizzes
   const visibleQuizzes =
     quizView === 'archived' ? archivedQuizzes : activeQuizzes
+
+  // ==========================================================
+  // RENDER
+  // ==========================================================
 
   return (
     <div className="quiz-maker">
@@ -3316,8 +3361,56 @@ function QuizManager({
           </div>
 
           <span className="question-count">
-            {questions.length}/20
+            {questions.length}/{MAX_QUESTIONS}
           </span>
+        </div>
+
+        {/* ====================================================
+            QUESTION NAVIGATOR
+            ==================================================== */}
+
+        <div className="question-nav">
+          <div className="question-nav-chips">
+            {questions.map((q, i) => {
+              const incomplete = validateQuestion(q, i) !== ''
+
+              return (
+                <button
+                  type="button"
+                  key={q.uid}
+                  className={`question-chip ${
+                    incomplete ? 'is-incomplete' : 'is-done'
+                  }`}
+                  onClick={() => jumpToQuestion(q.uid)}
+                  title={q.question || `Question ${i + 1}`}
+                >
+                  {i + 1}
+                </button>
+              )
+            })}
+          </div>
+
+          <div className="question-nav-actions">
+            <button
+              type="button"
+              className="quiz-add-btn"
+              onClick={collapseAll}
+            >
+              Collapse all
+            </button>
+
+            <button
+              type="button"
+              className="quiz-add-btn"
+              onClick={expandAll}
+            >
+              Expand all
+            </button>
+          </div>
+
+          <small className="question-nav-legend">
+            Green = complete · Orange = needs attention
+          </small>
         </div>
 
         {/* ====================================================
@@ -3329,13 +3422,18 @@ function QuizManager({
             const blankCount =
               getBlankCount(q.starter_code)
 
+            const isCollapsed = !!collapsed[q.uid]
+
             const syncedBlanks =
               q.code_blanks || []
 
             return (
               <div
-                className="quiz-question-card"
-                key={index}
+                className={`quiz-question-card ${
+                  isCollapsed ? 'is-collapsed' : ''
+                }`}
+                key={q.uid}
+                id={`question-${q.uid}`}
               >
 
                 {/* Question header */}
@@ -3343,6 +3441,31 @@ function QuizManager({
                   <div className="quiz-question-number">
                     {index + 1}
                   </div>
+
+                  <button
+                    type="button"
+                    className="icon-toggle"
+                    onClick={() => toggleCollapsed(q.uid)}
+                    title={
+                      isCollapsed
+                        ? 'Expand question'
+                        : 'Collapse question'
+                    }
+                    aria-label={
+                      isCollapsed
+                        ? 'Expand question'
+                        : 'Collapse question'
+                    }
+                  >
+                    <ChevronDown
+                      size={17}
+                      style={{
+                        transform: isCollapsed
+                          ? 'rotate(-90deg)'
+                          : 'none'
+                      }}
+                    />
+                  </button>
 
                   <input
                     className="question-input"
@@ -3356,6 +3479,12 @@ function QuizManager({
                     }
                     placeholder="Write your question here..."
                   />
+
+                  {isCollapsed && (
+                    <span className="question-type-badge">
+                      {getQuestionTypeLabel(q.question_type)}
+                    </span>
+                  )}
 
                   {questions.length > 1 && (
                     <button
@@ -3873,7 +4002,7 @@ function QuizManager({
             className="quiz-add-btn"
             onClick={addQuestion}
             disabled={
-              questions.length >= 20
+              questions.length >= MAX_QUESTIONS
             }
           >
             <Plus size={18} />
@@ -4188,7 +4317,7 @@ function QuizManager({
             </div>
 
             {!scoresLoading &&
-              scoreViewer.summary && (
+              scoreResults.length > 0 && (
                 <div className="quiz-score-summary">
                   <div>
                     <span>ATTEMPTS</span>
@@ -4272,7 +4401,7 @@ function QuizManager({
                 {filteredResults.map((result) => (
                   <div
                     className="quiz-score-table-row"
-                    key={result.id}
+                    key={`${result.student_id}-${result.taken_at}`}
                   >
                     <span className="quiz-score-student">
                       <User size={17} />
