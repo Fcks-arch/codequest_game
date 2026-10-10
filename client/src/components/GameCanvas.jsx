@@ -416,10 +416,7 @@ const PIP_SIZE_BOOST = 1.0      // 1.0 = exactly proportional; try 1.1-1.25 if P
   // on level 20, and only then is the island cleared.
   const BOSS_HP_PER_CHAPTER = 10      // 10 levels per boss, 1 HP per level
   const BOSS_TOTAL_LEVELS = 20        // 2 bosses x 10 levels
-  const ISLAND3_FIRST_LESSON_ID = 119 // Island 3 lessons 119-138
-  const ISLAND3_LAST_LESSON_ID = ISLAND3_FIRST_LESSON_ID + BOSS_TOTAL_LEVELS - 1
-  const ISLAND4_FIRST_LESSON_ID = 139 // Island 4 lessons 139-158
-  const ISLAND4_LAST_LESSON_ID = ISLAND4_FIRST_LESSON_ID + BOSS_TOTAL_LEVELS - 1
+  // Boss islands and their lesson-id ranges are configured in BOSS_ISLANDS (below).
 
   // Every correct answer makes Pip dash at the boss and hit it; every wrong answer
   // makes the boss strike back (the lives themselves are still handled by the lesson page).
@@ -484,8 +481,120 @@ const PIP_SIZE_BOOST = 1.0      // 1.0 = exactly proportional; try 1.1-1.25 if P
       },
     },
   }
-  const getBossSheet = (isIsland4, chapter) =>
-    isIsland4 ? (chapter === 0 ? BOSS_SHEETS.warden : BOSS_SHEETS.titan) : BOSS_SHEETS.island3
+  // ── Boss sheets for Islands 5, 6 and 7 (each is ONE boss with 20 HP, see BOSS_SINGLE_HP) ──
+// Extra optional fields used by these sheets:
+//   xFrac = where the boss stands (fraction of the background width, default 0.80)
+//   boltRgb / coreRgb = bolt colours, cast = { x, y } where the bolt leaves the boss
+//   rows.defeat = a third row used for the collapse animation (defeatFrames index into it)
+//   any row may set flip: true to mirror it (for frames that face the wrong way)
+
+// Island 5: the Hooded Warlock (island5boss.png)
+//   Row 1 (y 16-224) = 8 idle, Row 2 (y 238-441) = 7 attack (orb on the staff in frame 3),
+//   Row 5 (y 796-978) = 7 hurt / collapse frames
+const ISLAND5_BOSS = {
+  src: '/assets/island5boss.png',
+  projectile: 'bolt',
+  boltRgb: '170, 80, 255', coreRgb: '235, 200, 255',
+  cast: { x: 0.30, y: 0.55 },
+  ref: { w: 1536, h: 1024 },
+  standH: 206, standW: 190, heightFrac: 0.42,
+  idleFrames: 8, attackFrames: 7, slamFrame: 2, defeatFrames: [1, 2, 3, 4, 5, 6],
+  rows: {
+    idle:   { top: 14,  bottom: 226, feet: 222, cuts: [10, 213, 404, 591, 760, 940, 1116, 1308, 1525] },
+    attack: { top: 236, bottom: 443, feet: 436, cuts: [10, 228, 447, 684, 902, 1148, 1371, 1536] },
+    defeat: { top: 804, bottom: 980, feet: 976, cuts: [10, 197, 411, 610, 859, 1129, 1330, 1536] },
+  },
+}
+
+// Island 6: the Rune Colossus (island6boss.png)
+//   Row 1 (y 22-217) = 8 idle, Row 4 (y 673-841) = 2 attack frames that face RIGHT in the art
+//   (so the row is flipped), Row 5 (y 848-1004) = 7 collapse frames
+const ISLAND6_BOSS = {
+  src: '/assets/island6boss.png',
+  projectile: 'bolt',
+  boltRgb: '40, 200, 255', coreRgb: '225, 250, 255',
+  cast: { x: 0.42, y: 0.52 },
+  ref: { w: 1536, h: 1024 },
+  standH: 197, standW: 172, heightFrac: 0.44,
+  idleFrames: 8, attackFrames: 2, slamFrame: 1, defeatFrames: [0, 1, 2, 3, 4, 5, 6],
+  rows: {
+    idle:   { top: 18,  bottom: 220, feet: 216,  cuts: [10, 200, 376, 558, 741, 931, 1121, 1318, 1520] },
+    attack: { top: 668, bottom: 843, feet: 841,  cuts: [10, 205, 388], flip: true },
+    defeat: { top: 845, bottom: 1008, feet: 1002, cuts: [10, 199, 388, 560, 765, 1026, 1286, 1536] },
+  },
+}
+
+// Island 7: the Archive Colossus (island7boss.png, rebuilt so every frame is the same size
+// and every frame's feet sit on the same point of an equal 420px cell: no sliding)
+//   Row 1 (y 0-300) = 7 idle, Row 2 (y 325-570) = 4 attack (wind-up, charge, release),
+//   Row 3 (y 585-849) = 7 collapse frames
+const ISLAND7_BOSS = {
+  src: '/assets/island7boss.png',
+  projectile: 'bolt',
+  boltRgb: '40, 190, 255', coreRgb: '225, 248, 255',
+  cast: { x: 0.50, y: 0.40 },
+  ref: { w: 3360, h: 849 },
+  standH: 262, standW: 185, heightFrac: 0.52,
+  idleFrames: 7, attackFrames: 4, slamFrame: 3, defeatFrames: [0, 1, 2, 3, 4, 5, 6],
+  rows: {
+    idle:   { top: 0,   bottom: 300, feet: 274, cuts: [0, 420, 840, 1260, 1680, 2100, 2520, 2940] },
+    attack: { top: 325, bottom: 570, feet: 557, cuts: [0, 420, 840, 1260, 1680] },
+    defeat: { top: 585, bottom: 849, feet: 840, cuts: [0, 420, 840, 1260, 1680, 2100, 2520, 2940] },
+  },
+}
+
+// Islands that have ONE boss for all 20 levels, with this many HP.
+// Everything not listed here uses the two-boss, 10-HP-each system (islands 3 and 4).
+const BOSS_SINGLE_HP = { 5: 20, 6: 20, 7: 20 }
+// Island 2 = lessons 109-118, 3 = 119-138, 4 = 139-158, 5 = 159-178, 6 = 179-198, 7 = 199-218.
+// Everything from 109 up to this id uses the Island 2+ behaviour (no Island 1 scenes).
+const ISLAND_GENERIC_LAST_LESSON_ID = 218
+
+// One entry per boss island. firstId = id of the island's level 1 lesson.
+// names/sheets/tints are [boss for levels 1-10, boss for levels 11-20].
+// A lesson can still override the name or tint with mechanics_config.boss.
+const BOSS_ISLANDS = {
+  3: {
+    firstId: 119,
+    names: ['Syntax Golem', 'Literal Titan'],
+    sheets: [BOSS_SHEETS.island3, BOSS_SHEETS.island3],
+    tints: ['none', 'hue-rotate(150deg) saturate(1.4)'],
+  },
+  4: {
+    firstId: 139,
+    names: ['Control Warden', 'Logic Titan'],
+    sheets: [BOSS_SHEETS.warden, BOSS_SHEETS.titan],
+    tints: ['none', 'hue-rotate(150deg) saturate(1.3)'],
+  },
+  5: {
+    firstId: 159,
+    names: ['The Hooded Warlock', 'The Hooded Warlock'],
+    sheets: [ISLAND5_BOSS, ISLAND5_BOSS],
+    tints: ['none', 'none'],
+  },
+  6: {
+    firstId: 179,
+    names: ['The Rune Colossus', 'The Rune Colossus'],
+    sheets: [ISLAND6_BOSS, ISLAND6_BOSS],
+    tints: ['none', 'none'],
+  },
+  7: {
+    firstId: 199,
+    names: ['The Archive Colossus', 'The Archive Colossus'],
+    sheets: [ISLAND7_BOSS, ISLAND7_BOSS],
+    tints: ['none', 'none'],
+  },
+}
+
+// Which boss island is this lesson on? Matches the module id first, then the lesson id range
+// (safety net in case the API does not send module_id). Returns 0 when it is not a boss island.
+function getBossIslandNo(moduleId, lessonId) {
+  for (const [n, c] of Object.entries(BOSS_ISLANDS)) {
+    if (moduleId === Number(n)) return Number(n)
+    if (lessonId >= c.firstId && lessonId < c.firstId + BOSS_TOTAL_LEVELS) return Number(n)
+  }
+  return 0
+}
   const BOSS_IDLE_FPS = 8
   const BOSS_SLAM_AT = 450                                           // ms from the start of the attack until the fist hits the ground
   const BOSS_WAVE_MS = 520                                           // flight time of the thrown rock
@@ -1081,7 +1190,7 @@ const GROUND_FRACTION_BY_LESSON = { 118: LEVEL5_GROUND_FRACTION }
   // rounds of bug reports turned out to be an old copy of this file still
   // being served (stale dev server, browser cache, or the new file not
   // actually saved to the right path) rather than the bug persisting.
-  const BUILD_TAG = 'GameCanvas 2026-10-09 (island 4 bosses from island4boss.png)'
+  const BUILD_TAG = 'GameCanvas 2026-10-10 (boss islands 3-7 via BOSS_ISLANDS; islands 5-7 = single 20-HP bosses)'
 
   export default function GameCanvas({ playToken, introToken = 0, replayToken = 0, onIntroComplete, code, onResult, onCharacterPosition, target, lessonData, resetToken = 0, fullHeight, levelLabel, levelTitle, initialPipPosition, eventOffset = 0, lessonId, executionMode = 'guided', hitToken = 0, onBossDefeated, onIslandComplete, deathToken = 0, onPipDeathComplete, strikeToken = 0, isDying = false }) {
     useEffect(() => { console.log('[CodeQuest]', BUILD_TAG) }, [])
@@ -1172,8 +1281,8 @@ const GROUND_FRACTION_BY_LESSON = { 118: LEVEL5_GROUND_FRACTION }
     const lessonModuleId = Number(lessonData?.module_id)
     const lessonIdNum = Number(lessonId ?? lessonData?.id)
     const isIsland2 =
-      lessonModuleId === 2 || lessonModuleId === 3 || lessonModuleId === 4 ||
-      (lessonIdNum >= 109 && lessonIdNum <= ISLAND4_LAST_LESSON_ID)   // Island 2: 109-118, Island 3: 119-138, Island 4: 139-158
+      (lessonModuleId >= 2 && lessonModuleId <= 7) ||
+      (lessonIdNum >= 109 && lessonIdNum <= ISLAND_GENERIC_LAST_LESSON_ID)   // Islands 2 to 7: lessons 109-218
     const currentLevel = isIsland2
       ? 0
       : Number(
@@ -1208,48 +1317,36 @@ const GROUND_FRACTION_BY_LESSON = { 118: LEVEL5_GROUND_FRACTION }
         : (initialPipPosition || 0))
     const skipsWalkCutscene = currentLevel !== 1
 
-    // Islands 3 and 4 use the same 20-level boss-fight system:
-    // Island 3: Syntax Golem, then Literal Titan.
-    // Island 4: Control Warden, then Logic Titan.
-    const isIsland3BossLessons =
-      lessonIdNum >= ISLAND3_FIRST_LESSON_ID && lessonIdNum <= ISLAND3_LAST_LESSON_ID
-    const isIsland4BossLessons =
-      lessonIdNum >= ISLAND4_FIRST_LESSON_ID && lessonIdNum <= ISLAND4_LAST_LESSON_ID
-    const isBossIsland = lessonModuleId === 3 || lessonModuleId === 4 ||
-      isIsland3BossLessons || isIsland4BossLessons
+    // Boss islands (3 to 7) all use the same 20-level boss-fight system.
+    // Which bosses appear on which island is configured in BOSS_ISLANDS above.
+    const bossIslandNo = getBossIslandNo(lessonModuleId, lessonIdNum)
+    const isBossIsland = bossIslandNo > 0
+    const bossIslandCfg = BOSS_ISLANDS[bossIslandNo] || BOSS_ISLANDS[3]
     const bossCfgRaw = config?.boss || {}
     // Level 1-20. Fall back to the lesson id range if order_index isn't 1-20.
     const rawOrder = Number(lessonData?.order_index)
     const bossLevelNo = rawOrder >= 1 && rawOrder <= BOSS_TOTAL_LEVELS
       ? rawOrder
-      : isIsland4BossLessons
-        ? lessonIdNum - ISLAND4_FIRST_LESSON_ID + 1
-        : isIsland3BossLessons
-          ? lessonIdNum - ISLAND3_FIRST_LESSON_ID + 1
-          : 1
-    const bossChapter = bossLevelNo > BOSS_HP_PER_CHAPTER ? 1 : 0
-    const isIsland4Boss = lessonModuleId === 4 || isIsland4BossLessons
-    const bossName = bossCfgRaw.name || (
-      isIsland4Boss
-        ? (bossChapter === 0 ? 'Control Warden' : 'Logic Titan')
-        : (bossChapter === 0 ? 'Syntax Golem' : 'Literal Titan')
-    )
+      : isBossIsland
+        ? Math.max(1, Math.min(BOSS_TOTAL_LEVELS, lessonIdNum - bossIslandCfg.firstId + 1))
+        : 1
+    // Islands 3 and 4 have two bosses of 10 HP (levels 1-10 and 11-20). Islands listed in
+    // BOSS_SINGLE_HP (5, 6, 7) have ONE boss with that many HP for all 20 levels.
+    const singleBossHp = BOSS_SINGLE_HP[bossIslandNo]
+    const hpPerBoss = singleBossHp || BOSS_HP_PER_CHAPTER
+    const bossChapter = singleBossHp ? 0 : (bossLevelNo > BOSS_HP_PER_CHAPTER ? 1 : 0)
+    const bossName = bossCfgRaw.name || bossIslandCfg.names[bossChapter]
+    const nextBossName = bossIslandCfg.names[1]
     // HP is computed, not read from config, so a bad lesson row can't break the fight.
-    // Levels 1-10: 10 -> 0 (boss 1). Levels 11-20: 10 -> 0 (boss 2).
-    const bossMaxHp = BOSS_HP_PER_CHAPTER
-    const bossHpBefore = bossMaxHp - ((bossLevelNo - 1) % BOSS_HP_PER_CHAPTER)
+    const bossMaxHp = hpPerBoss
+    const bossHpBefore = bossMaxHp - ((bossLevelNo - 1) % hpPerBoss)
     const bossHpAfter = Math.max(0, bossHpBefore - 1)
-    const isChapterFinale = bossHpAfter <= 0                       // level 10 or 20
+    const isChapterFinale = bossHpAfter <= 0                       // level 10 or 20 (level 20 on single-boss islands)
     const isIslandFinale = bossLevelNo === BOSS_TOTAL_LEVELS       // level 20
-    // Island 4 has two different golems, so it needs no tint; Island 3 recolours its second boss.
-    const bossSheet = getBossSheet(isIsland4Boss, bossChapter)
-        const bossTint = bossCfgRaw.tint || (
-      bossChapter === 1
-        ? (isIsland4Boss ? 'hue-rotate(150deg) saturate(1.3)' : 'hue-rotate(150deg) saturate(1.4)')
-        : 'none'
-    )
+    const bossSheet = bossIslandCfg.sheets[bossChapter]
+    const bossTint = bossCfgRaw.tint || bossIslandCfg.tints[bossChapter]
     const bossCfgRef = useRef({ enabled: false })
-    bossCfgRef.current = { enabled: isBossIsland, name: bossName, maxHp: bossMaxHp, hpAfter: bossHpAfter, tint: bossTint, finale: isIslandFinale, sheet: bossSheet }
+    bossCfgRef.current = { enabled: isBossIsland, name: bossName, maxHp: bossMaxHp, hpAfter: bossHpAfter, tint: bossTint, finale: isIslandFinale, sheet: bossSheet, islandNo: bossIslandNo }
     const bossFxRef = useRef(newBossFx())
         const deathFxRef = useRef({ start: null, mode: null, cx: 0, feetY: 0 })   // mode: 'strike' (5 frames) | 'die' (all 10)
     const pipDrawRef = useRef({ cx: 0, feetY: 0 })     // where Pip was last drawn
@@ -2566,7 +2663,7 @@ const GROUND_FRACTION_BY_LESSON = { 118: LEVEL5_GROUND_FRACTION }
       const u = (H * sh.heightFrac) / sh.standH         // screen px per sheet px
       const bossH = sh.standH * u
       const bossW = sh.standW * u
-      const bossCx = imgX + imgW * 0.80
+      const bossCx = imgX + imgW * (sh.xFrac ?? 0.80)
       const bossY = feet + SINK - bossH
       bossGeomRef.current = { cx: bossCx, w: bossW }   // Pip reads this to know where to dash to
 
@@ -2584,9 +2681,12 @@ const GROUND_FRACTION_BY_LESSON = { 118: LEVEL5_GROUND_FRACTION }
       let frame = Math.floor(now / (1000 / BOSS_IDLE_FPS)) % sh.idleFrames
       let alpha = 1
       if (sinceDefeat >= 0) {
-        rowKey = 'attack'
+        // Collapse: walks through sh.defeatFrames in order, using the sheet's own `defeat`
+        // row when it has one, otherwise the attack row.
+        rowKey = sh.rows.defeat ? 'defeat' : 'attack'
         const p = Math.min(1, sinceDefeat / BOSS_DEFEAT_COLLAPSE_MS)
-        frame = p < 0.34 ? sh.defeatFrames[0] : p < 0.67 ? sh.defeatFrames[1] : sh.defeatFrames[2]   // slam -> recoil -> kneeling in dust
+        const dFrames = sh.defeatFrames
+        frame = dFrames[Math.min(dFrames.length - 1, Math.floor(p * dFrames.length))]   // slam -> recoil -> kneeling in dust
         if (sinceDefeat > BOSS_DEFEAT_COLLAPSE_MS) {
           alpha = Math.max(0.3, 1 - (sinceDefeat - BOSS_DEFEAT_COLLAPSE_MS) / 1500)
         }
@@ -2612,11 +2712,22 @@ const GROUND_FRACTION_BY_LESSON = { 118: LEVEL5_GROUND_FRACTION }
         if (cfg.tint && cfg.tint !== 'none') filters.push(cfg.tint)
         if (flash) filters.push('brightness(2.4)')
         if (filters.length) ctx.filter = filters.join(' ')
-        ctx.drawImage(
-          sheet,
-          x0 * kx, row.top * ky, (x1 - x0) * kx, (row.bottom - row.top) * ky,
-          Math.round(destX), Math.round(destY), dwF, dhF
-        )
+        if (row.flip) {
+          // this row faces right in the art: mirror it around its own cell
+          ctx.translate(Math.round(destX) + dwF, 0)
+          ctx.scale(-1, 1)
+          ctx.drawImage(
+            sheet,
+            x0 * kx, row.top * ky, (x1 - x0) * kx, (row.bottom - row.top) * ky,
+            0, Math.round(destY), dwF, dhF
+          )
+        } else {
+          ctx.drawImage(
+            sheet,
+            x0 * kx, row.top * ky, (x1 - x0) * kx, (row.bottom - row.top) * ky,
+            Math.round(destX), Math.round(destY), dwF, dhF
+          )
+        }
         ctx.restore()
       }
 
@@ -2661,11 +2772,11 @@ const GROUND_FRACTION_BY_LESSON = { 118: LEVEL5_GROUND_FRACTION }
       // Slam: dust bursts where his fist lands and a chunk of rock is hurled at Pip.
              if (sh.projectile === 'bolt') {
         const warm = !!(cfg.tint && cfg.tint !== 'none')
-        const boltRgb = warm ? '255, 150, 70' : '90, 190, 255'
-        const coreRgb = warm ? '255, 240, 200' : '225, 246, 255'
+        const boltRgb = sh.boltRgb || (warm ? '255, 150, 70' : '90, 190, 255')
+        const coreRgb = sh.coreRgb || (warm ? '255, 240, 200' : '225, 246, 255')
 
-        const castX = bossCx - bossW * 0.42
-        const castY = feet - bossH * 0.62
+        const castX = bossCx - bossW * (sh.cast?.x ?? 0.42)
+        const castY = feet - bossH * (sh.cast?.y ?? 0.62)
         const boltStart = fx.attackStart + BOSS_SLAM_AT
         const boltT = (now - boltStart) / BOSS_WAVE_MS
         const boltR = Math.max(9, bossH * 0.07)
@@ -2744,6 +2855,8 @@ const GROUND_FRACTION_BY_LESSON = { 118: LEVEL5_GROUND_FRACTION }
           ctx.restore()
         }
       }
+      // Dust and thrown rock are only for bosses WITHOUT a bolt (the Island 3 golem).
+      if (sh.projectile !== 'bolt') {
       const slamX = bossCx - bossW * 0.3
       const slamY = feet - 6
       const sinceSlam = sinceAttack - BOSS_SLAM_AT
@@ -2836,6 +2949,8 @@ const GROUND_FRACTION_BY_LESSON = { 118: LEVEL5_GROUND_FRACTION }
         }
       }
 
+      }
+
       // Pip's melee impact: a quick white slash on the boss
       const sinceSlash = now - fx.hitStart
       if (sinceSlash >= 0 && sinceSlash < SLASH_FX_MS) {
@@ -2901,8 +3016,8 @@ const GROUND_FRACTION_BY_LESSON = { 118: LEVEL5_GROUND_FRACTION }
           ctx.fillText(label, W / 2, H * 0.2)
           if (cfg.finale) {
             ctx.font = "800 22px 'JetBrains Mono', monospace"
-            ctx.strokeText('ISLAND 3 CLEARED!', W / 2, H * 0.2 + 36)
-            ctx.fillText('ISLAND 3 CLEARED!', W / 2, H * 0.2 + 36)
+            ctx.strokeText(`ISLAND ${cfg.islandNo} CLEARED!`, W / 2, H * 0.2 + 36)
+            ctx.fillText(`ISLAND ${cfg.islandNo} CLEARED!`, W / 2, H * 0.2 + 36)
           }
           ctx.restore()
         }
@@ -3186,6 +3301,9 @@ const GROUND_FRACTION_BY_LESSON = { 118: LEVEL5_GROUND_FRACTION }
       if (!strikeToken || strikeToken === strikeBaselineRef.current) return
       if (isBossIsland) {
         // Island 3: the golem hits Pip, not lightning. Only the last heart plays the death, after the rock lands.
+        // BOSS-ATTACK-PATCH: every wrong answer makes the boss strike back.
+        // triggerBossAttack's 1.6 s lock ignores this if another trigger already fired.
+        triggerBossAttack()
         if (isDying) {
           clearTimeout(deathDelayRef.current)
           deathDelayRef.current = setTimeout(triggerPipDeath, BOSS_HIT_DELAY_MS)
@@ -4082,8 +4200,7 @@ const GROUND_FRACTION_BY_LESSON = { 118: LEVEL5_GROUND_FRACTION }
             code,
             error: null,
             finalX: pipX,
-            boss: {
-              level: bossLevelNo,
+            boss: { island: bossIslandNo, level: bossLevelNo,
               chapter: bossChapter + 1,        // 1 or 2
               name: bossName,
               hpAfter: bossHpAfter,
@@ -4091,8 +4208,8 @@ const GROUND_FRACTION_BY_LESSON = { 118: LEVEL5_GROUND_FRACTION }
               islandComplete: defeats && isIslandFinale,
             },
           })
-          if (defeats) setBossCongrats({ chapter: bossChapter + 1, name: bossName, finale: isIslandFinale })
-          if (defeats) onBossDefeated?.({ chapter: bossChapter + 1, name: bossName, level: bossLevelNo })
+          if (defeats) setBossCongrats({ chapter: bossChapter + 1, name: bossName, finale: isIslandFinale, islandNo: bossIslandNo, nextName: nextBossName, single: !!singleBossHp })
+          if (defeats) onBossDefeated?.({ chapter: bossChapter + 1, name: bossName, level: bossLevelNo, island: bossIslandNo })
           if (defeats && isIslandFinale) onIslandComplete?.()
           startIdleLoop()
         }
@@ -4476,8 +4593,10 @@ const GROUND_FRACTION_BY_LESSON = { 118: LEVEL5_GROUND_FRACTION }
               </div>
               <div style={{ fontSize:14, marginTop:8, opacity:0.75 }}>
                 {bossCongrats.finale
-                  ? 'Both bosses are down. Island 3 is cleared!'
-                  : 'Boss 1 of 2 is down. Next up: the Literal Titan in levels 11–20.'}
+                  ? (bossCongrats.single
+                      ? `Island ${bossCongrats.islandNo} is cleared!`
+                      : `Both bosses are down. Island ${bossCongrats.islandNo} is cleared!`)
+                  : `Boss 1 of 2 is down. Next up: the ${bossCongrats.nextName} in levels 11–20.`}
               </div>
               <button
                 onClick={() => setBossCongrats(null)}
