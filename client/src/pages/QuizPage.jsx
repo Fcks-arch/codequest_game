@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import axios from 'axios'
 import {
   ClipboardList,
@@ -134,6 +134,18 @@ export default function QuizPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const questionCardRef = useRef(null)
+
+useEffect(() => {
+  const card = questionCardRef.current
+  if (!card) return
+
+  const top = card.getBoundingClientRect().top
+
+  if (top < 80 || top > window.innerHeight * 0.5) {
+    card.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+}, [currentQuestion])
 
   /* =========================================================
      LOAD QUIZ LIST
@@ -319,10 +331,6 @@ export default function QuizPage() {
         (prev) => prev + 1
       )
 
-      window.scrollTo({
-        top: 0,
-        behavior: 'smooth'
-      })
     }
   }
 
@@ -336,10 +344,6 @@ export default function QuizPage() {
         (prev) => prev - 1
       )
 
-      window.scrollTo({
-        top: 0,
-        behavior: 'smooth'
-      })
     }
   }
 
@@ -792,7 +796,7 @@ export default function QuizPage() {
               QUESTION CARD
           ================================================= */}
 
-          <section className="cq-question-card">
+          <section className="cq-question-card" ref={questionCardRef}>
 
             <div className="cq-question-number">
               {currentQuestion + 1}
