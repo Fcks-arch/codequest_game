@@ -99,6 +99,69 @@
       { x: 1163, y: 3,  w: 170, h: 212 }, { x: 1471, y: 6,  w: 156, h: 209 },
     ],
   }
+  // ── Pip's lightning death (pip-death.png, 8 cells, 2172x724) ──
+// The lightning column and its glow are painted INTO cells 1-7 of this sheet, from the top of the cell
+// (y=0) down to Pip. Each cell is drawn in two parts: Pip's part (y >= DEATH_SPLIT_Y) at normal size with
+// his feet on the ground, and the sky part (y < DEATH_SPLIT_Y) stretched upward so the bolt always
+// reaches the very top of the canvas (and widened a little, tapering back to normal at his head).
+// x0/x1 = cut lines between cells, cx = x of Pip's body centre (where the bolt hits him).
+const DEATH_SHEET_SRC = '/assets/pip-death.png'
+const DEATH_SHEET_REF = { w: 2172, h: 724 }
+const DEATH_FOOT_Y = 662        // y of his boots in the sheet
+const DEATH_STAND_H = 266       // height of the standing figure (cell 0), so he is as big as idle Pip
+const DEATH_SPLIT_Y = 290       // above this row there is only lightning: that part is stretched up to the canvas top
+const DEATH_BOLT_WIDEN = 2.2    // the top of the bolt is drawn this much wider than Pip's scale (1 = no widening)
+const DEATH_BOLT_STRIPS = 24    // the sky part is drawn in this many strips so the widening is smooth
+const DEATH_CELLS = [
+  { x0: 0,    x1: 240,  cx: 118  },   // 0 standing, sword, no bolt
+  { x0: 240,  x1: 547,  cx: 395  },   // 1 hit: electrified, bolt + aura
+  { x0: 547,  x1: 838,  cx: 705  },   // 2 skeleton
+  { x0: 838,  x1: 1150, cx: 990  },   // 3 skeleton (other pose)
+  { x0: 1150, x1: 1437, cx: 1295 },   // 4 crumbling to rocks
+  { x0: 1437, x1: 1708, cx: 1587 },   // 5 ash pile
+  { x0: 1708, x1: 1955, cx: 1845 },   // 6 ash pile
+  { x0: 1955, x1: 2172, cx: 2065 },   // 7 last embers (held)
+]
+// The timeline: which cell is shown, and for how long. Cells repeat so he flickers between Pip and skeleton.
+const DEATH_FRAMES = [
+  { cell: 0, ms: 200 },   // 0 standing while the thin strike.png bolt falls (= STRIKE_IMPACT_MS)
+  { cell: 1, ms: 150 },   // 1 BOLT HITS + screen flash
+  { cell: 2, ms: 90  },   // 2 skeleton
+  { cell: 1, ms: 70  },   // 3 Pip again
+  { cell: 3, ms: 90  },   // 4 skeleton
+  { cell: 1, ms: 70  },   // 5 Pip again
+  { cell: 2, ms: 110 },   // 6 skeleton
+  { cell: 3, ms: 110 },   // 7 skeleton
+  { cell: 4, ms: 150 },   // 8 crumbling
+  { cell: 5, ms: 150 },   // 9 ash
+  { cell: 6, ms: 150 },   // 10 ash
+  { cell: 7, ms: 0   },   // 11 last embers (held)
+]
+const DEATH_STRIKE_FRAME = 1    // timeline step where the bolt hits (screen flash)
+const DEATH_TOTAL_MS = DEATH_FRAMES.reduce((t, f) => t + f.ms, 0)
+const DEATH_HOLD_MS = 700       // how long the last frame stays before onPipDeathComplete fires
+// Wrong answer with hearts left: only the first 6 timeline steps play (ms per step), then Pip is back to normal
+const DEATH_STRIKE_MS = [200, 150, 90, 70, 90, 70]
+const DEATH_STRIKE_TOTAL_MS = DEATH_STRIKE_MS.reduce((t, ms) => t + ms, 0)   // 670 ms
+
+// ── Falling bolt (strike.png) — only its first 5 frames are used: the bolt grows down from the very top
+// of the canvas while Pip stands (200 ms). When it connects, pip-death.png frame 2 takes over with the big bolt.
+// x0/x1 = cut lines between frames, cx = x of the bolt's top star inside its cell.
+const STRIKE_SHEET_SRC = '/assets/strike.png'
+const STRIKE_SHEET_REF = { w: 2089, h: 753 }
+const STRIKE_TOP_Y = 38          // y of the bolt's top star in the sheet  -> top of the canvas
+const STRIKE_GROUND_Y = 685      // y where the bolt hits the ground in the sheet -> Pip's feet
+const STRIKE_FRAMES = [
+  { x0: 0,    x1: 117,  cx: 52,   ms: 40 },   // 0  bolt starts at the top
+  { x0: 117,  x1: 250,  cx: 184,  ms: 40 },   // 1
+  { x0: 250,  x1: 392,  cx: 318,  ms: 40 },   // 2
+  { x0: 392,  x1: 549,  cx: 471,  ms: 40 },   // 3
+  { x0: 549,  x1: 719,  cx: 645,  ms: 40 },   // 4  almost down
+]
+const STRIKE_IMPACT_MS = 200     // = STRIKE_FRAMES total = Pip frames 0+1; the burst frame starts here
+const STRIKE_TOTAL_MS = STRIKE_FRAMES.reduce((t, f) => t + f.ms, 0)   // 200 ms
+const LIGHTNING_SFX = '/assets/sounds/lightning-strike.mp3'
+const LIGHTNING_SFX_LEAD_MS = 100   // the crack is ~0.1 s into the mp3, so start it this much before impact
   // Frames advance roughly this many times per second while animating.
   const FPS = { characterIdle: 6, characterWalk: 15, characterRun: 14, characterJump: 10, characterLand: 14 }
   // Sheet layout constants for pip-walking.png.
@@ -108,23 +171,23 @@
   // and on each frame's own feet stops the sprite sliding/hopping inside its cell.
   const WALK_SHEET_REF = { w: 2170, h: 725 }
   const WALK_FRAMES = [
-    { x: 62,   y: 34,  w: 232, h: 328, hx: 136 }, // 1  sword
-    { x: 416,  y: 34,  w: 274, h: 322, hx: 190 }, // 2
-    { x: 793,  y: 16,  w: 274, h: 337, hx: 183 }, // 3
-    { x: 1163, y: 32,  w: 279, h: 328, hx: 179 }, // 4  sword
-    { x: 1542, y: 33,  w: 260, h: 319, hx: 143 }, // 5  sword
-    { x: 1866, y: 33,  w: 276, h: 322, hx: 177 }, // 6  sword
-    { x: 46,   y: 362, w: 257, h: 332, hx: 155 }, // 7  sword
-    { x: 416,  y: 364, w: 274, h: 330, hx: 190 }, // 8
-    { x: 806,  y: 362, w: 248, h: 329, hx: 152 }, // 9
-    { x: 1162, y: 365, w: 288, h: 329, hx: 177 }, // 10 sword
-    { x: 1527, y: 364, w: 253, h: 327, hx: 161 }, // 11
-    { x: 1887, y: 365, w: 240, h: 329, hx: 156 }, // 12
-  ]
+  { x: 62,   y: 34,  w: 232, h: 328, hx: 115 }, // 1  sword
+  { x: 416,  y: 34,  w: 274, h: 322, hx: 136 }, // 2
+  { x: 793,  y: 16,  w: 274, h: 337, hx: 136 }, // 3
+  { x: 1163, y: 32,  w: 279, h: 328, hx: 139 }, // 4  sword
+  { x: 1542, y: 33,  w: 260, h: 319, hx: 129 }, // 5  sword
+  { x: 1866, y: 33,  w: 276, h: 322, hx: 137 }, // 6  sword
+  { x: 46,   y: 362, w: 257, h: 332, hx: 128 }, // 7  sword
+  { x: 416,  y: 364, w: 274, h: 330, hx: 136 }, // 8
+  { x: 806,  y: 362, w: 248, h: 329, hx: 123 }, // 9
+  { x: 1162, y: 365, w: 288, h: 329, hx: 143 }, // 10 sword
+  { x: 1527, y: 364, w: 253, h: 327, hx: 126 }, // 11
+  { x: 1887, y: 365, w: 240, h: 329, hx: 119 }, // 12
+]
   // Only the frames where the sword is drawn (0-based). For all 12 use [0,1,2,3,4,5,6,7,8,9,10,11].
   const WALK_FRAME_ORDER = [0, 3, 4, 5, 6, 9]
   const WALK_REF_H = 328                 // figure height in the sheet, so walk Pip is 77px like idle
-  const WALK_CYCLE_IN_PIP_HEIGHTS = 1.0  // ground covered by one full loop; tune by eye
+  const WALK_CYCLE_IN_PIP_HEIGHTS = 0.9  // ground covered by one full loop; tune by eye
   const WALK_SHEET_ROWS = 2
   const TOTAL_WALK_FRAMES = 12
   // The idle sheet contains nine horizontal poses. Keep the source order so
@@ -239,7 +302,14 @@
   const TERRAIN1_TILE_SCALE = 1.16
   const TERRAIN1_MAX_VISUAL_TILE = 9.25
   const BASE_PIP_RENDER_WIDTH = 58
-  const BASE_PIP_RENDER_HEIGHT = 77
+const BASE_PIP_RENDER_HEIGHT = 77
+const PIP_MIN_HEIGHT_PX = 26    // never microscopic on small phones
+// Pip is sized relative to the RENDERED BACKGROUND, so he keeps the same proportion to the art
+// (golem, torches, doors...) on every screen. 1495 = the background width at which he is 77px tall.
+const PIP_REF_BG_WIDTH = 1495
+const PIP_HEIGHT_PER_BG_WIDTH = BASE_PIP_RENDER_HEIGHT / PIP_REF_BG_WIDTH   // 77 / 1495
+const PIP_MIN_SCALE = 0.25
+const PIP_SIZE_BOOST = 1.0      // 1.0 = exactly proportional; try 1.1-1.25 if Pip feels too small       
   const pipRenderScaleForWidth = width =>
     width <= 600 ? 0.58 : width <= 820 ? 0.68 : width <= 1100 ? 0.78 : width <= 1366 ? 0.88 : 1
   const START_X = 50
@@ -527,6 +597,48 @@ function playPipAttackSfx() {
     a.play().catch(fallback)
   } catch (_) { fallback() }
 }
+  function synthLightningSfx() {
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext
+    if (!AC) return
+    if (!bossAudioCtx) bossAudioCtx = new AC()
+    const ac = bossAudioCtx
+    if (ac.state === 'suspended') ac.resume()
+    const t0 = ac.currentTime
+    const master = ac.createGain()
+    master.gain.value = 0.8
+    master.connect(ac.destination)
+    // crack
+    const len = Math.floor(ac.sampleRate * 0.5)
+    const buf = ac.createBuffer(1, len, ac.sampleRate)
+    const d = buf.getChannelData(0)
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.2)
+    const src = ac.createBufferSource(); src.buffer = buf
+    const hp = ac.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 1500
+    const cg = ac.createGain(); cg.gain.value = 0.9
+    src.connect(hp); hp.connect(cg); cg.connect(master); src.start(t0)
+    // rumble
+    const o = ac.createOscillator(); o.type = 'sawtooth'
+    o.frequency.setValueAtTime(70, t0); o.frequency.exponentialRampToValueAtTime(28, t0 + 0.7)
+    const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 220
+    const og = ac.createGain()
+    og.gain.setValueAtTime(0.5, t0); og.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.8)
+    o.connect(lp); lp.connect(og); og.connect(master); o.start(t0); o.stop(t0 + 0.85)
+  } catch (_) { /* audio is optional */ }
+}
+let lightningAudio = null
+function playLightningSfx() {
+  let fellBack = false
+  const fallback = () => { if (!fellBack) { fellBack = true; synthLightningSfx() } }
+  try {
+    if (lightningAudio) { lightningAudio.pause(); lightningAudio = null }   // a new strike cuts the old thunder
+    const a = new Audio(LIGHTNING_SFX)
+    a.volume = 0.9
+    a.addEventListener('error', fallback)
+    lightningAudio = a
+    a.play().catch(fallback)
+  } catch (_) { fallback() }
+}
 
   const newBossFx = () => ({
     hitStart: -Infinity,     // when the boss is hit
@@ -554,6 +666,9 @@ function playPipAttackSfx() {
   const LEVEL5_START_TILE = 1.0          // where Pip stops after coming down the stairs
   const LEVEL5_PIP_SCALE = 1           // Pip is drawn this much bigger on the forge map
   const LEVEL5_GROUND_FRACTION = 0.60    // sandy path, not the cliff face
+  const GROUND_FRACTION_BY_LEVEL = { 5: LEVEL5_GROUND_FRACTION, 6: LEVEL5_GROUND_FRACTION }
+// Island 2 lessons have currentLevel 0, so they are keyed by lesson id. 118 is Island 2's level 10 (inferred from the 109-118 id range)
+const GROUND_FRACTION_BY_LESSON = { 118: LEVEL5_GROUND_FRACTION }
   const LEVEL5_INTRO_MS = 2600           // door -> stairs -> stop
   // fractions of the background image, measured from the art
   // x0,y0 = top step · x1,y1 = bottom step · x2 = where he settles on the path
@@ -655,7 +770,7 @@ function playPipAttackSfx() {
   // restFrame: 0 = bridge raised, 4 = lowered.
   const DRAWBRIDGE_CONFIGS = {
   5: { x: 0.572, span: 0.200, restFrame: 0 },   // measured from your Level 5 art
-  6: { x: 0.658, span: 0.258, restFrame: 0 },   // estimated, see the note below
+  6: { x: 0.572, span: 0.235, restFrame: 0 },   // same background as Level 5, so the same placement
 }
 
 
@@ -930,7 +1045,7 @@ function playPipAttackSfx() {
   // actually saved to the right path) rather than the bug persisting.
   const BUILD_TAG = 'GameCanvas 2026-10-08a (gates L1-2, pip attack sound)'
 
-  export default function GameCanvas({ playToken, introToken = 0, replayToken = 0, onIntroComplete, code, onResult, onCharacterPosition, target, lessonData, resetToken = 0, fullHeight, levelLabel, levelTitle, initialPipPosition, eventOffset = 0, lessonId, executionMode = 'guided', hitToken = 0, onBossDefeated, onIslandComplete }) {
+  export default function GameCanvas({ playToken, introToken = 0, replayToken = 0, onIntroComplete, code, onResult, onCharacterPosition, target, lessonData, resetToken = 0, fullHeight, levelLabel, levelTitle, initialPipPosition, eventOffset = 0, lessonId, executionMode = 'guided', hitToken = 0, onBossDefeated, onIslandComplete, deathToken = 0, onPipDeathComplete, strikeToken = 0, isDying = false }) {
     useEffect(() => { console.log('[CodeQuest]', BUILD_TAG) }, [])
 
     const cvs    = useRef(null)
@@ -981,10 +1096,16 @@ function playPipAttackSfx() {
     const [errMsg,   setErrMsg]   = useState('')
     const [canvasH,  setCanvasH]  = useState(300)
     const [canvasW,  setCanvasW]  = useState(1280)
-    const pipRenderScaleRef = useRef(1)
-  pipRenderScaleRef.current = pipRenderScaleForWidth(canvasW)
-  const getPipRenderWidth = () => BASE_PIP_RENDER_WIDTH * pipRenderScaleRef.current
-  const getPipRenderHeight = () => BASE_PIP_RENDER_HEIGHT * pipRenderScaleRef.current
+    const getPipScale = () => {
+    const bgW = bgRenderRectRef.current.dw || canvasW          // rendered background width
+      return Math.max(PIP_MIN_SCALE, Math.min(1, (bgW / PIP_REF_BG_WIDTH) * PIP_SIZE_BOOST))
+    }
+    const getPipRenderHeight = () => {
+    const dw = bgRenderRectRef.current.dw
+    if (!(dw > 0)) return BASE_PIP_RENDER_HEIGHT * pipRenderScaleForWidth(canvasW)   // before the first draw
+    return Math.max(PIP_MIN_HEIGHT_PX, dw * PIP_HEIGHT_PER_BG_WIDTH * PIP_SIZE_BOOST)
+    }
+    const getPipRenderWidth = () => getPipRenderHeight() * (BASE_PIP_RENDER_WIDTH / BASE_PIP_RENDER_HEIGHT)
     const [assetsReady, setAssetsReady] = useState(false)
     const [isIdleLoaded, setIsIdleLoaded] = useState(false) // eslint-disable-line no-unused-vars
     const [tileProgress, setTileProgress] = useState(0) // eslint-disable-line no-unused-vars
@@ -1029,9 +1150,7 @@ function playPipAttackSfx() {
       ? TERRAIN1_BRIDGE_FRACTION
       : currentLevel === 8
         ? LEVEL8_GROUND_FRACTION
-        : currentLevel === 5
-          ? LEVEL5_GROUND_FRACTION
-          : lessonGroundFraction || BG_GRASS_FRACTION
+                : GROUND_FRACTION_BY_LESSON[lessonIdNum] ?? GROUND_FRACTION_BY_LEVEL[currentLevel] ?? (lessonGroundFraction || BG_GRASS_FRACTION)
     const gateConfig = GATE_CONFIGS.default
     const fireConfig = FIRE_CONFIGS[currentLevel === 4 ? 3 : currentLevel] || null
     const librarianConfig = LIBRARIAN_CONFIGS[currentLevel] || null
@@ -1075,6 +1194,51 @@ function playPipAttackSfx() {
     const bossCfgRef = useRef({ enabled: false })
     bossCfgRef.current = { enabled: isBossIsland, name: bossName, maxHp: bossMaxHp, hpAfter: bossHpAfter, tint: bossTint, finale: isIslandFinale }
     const bossFxRef = useRef(newBossFx())
+        const deathFxRef = useRef({ start: null, mode: null, cx: 0, feetY: 0 })   // mode: 'strike' (5 frames) | 'die' (all 10)
+    const pipDrawRef = useRef({ cx: 0, feetY: 0 })     // where Pip was last drawn
+    const deathTimerRef = useRef(null)
+    const deathDelayRef = useRef(null)
+    const onDeathCompleteRef = useRef(null)
+    onDeathCompleteRef.current = onPipDeathComplete
+    const deathBaselineRef = useRef(deathToken)
+    const strikeBaselineRef = useRef(strikeToken)
+
+    // WRONG ANSWER, hearts left: lightning hits Pip -> first 5 frames only, then he is normal again
+    const triggerPipStrike = useCallback(() => {
+      const fx = deathFxRef.current
+      if (fx.mode === 'die') return false
+      if (!imgs.current.pipDeathSprite) return false
+      fx.start = performance.now()
+      fx.mode = 'strike'
+      fx.cx = pipDrawRef.current.cx
+      fx.feetY = pipDrawRef.current.feetY
+      setTimeout(playLightningSfx, STRIKE_IMPACT_MS - LIGHTNING_SFX_LEAD_MS)   // crack lands with the bolt
+      return true
+    }, [])
+
+    // WRONG ANSWER on the LAST heart: whole sheet, Pip turns to ash, then onPipDeathComplete (Game Over)
+    const triggerPipDeath = useCallback(() => {
+      const fx = deathFxRef.current
+      if (fx.mode === 'die') return false
+      if (!imgs.current.pipDeathSprite) {                       // sheet missing: still let the page continue
+        clearTimeout(deathTimerRef.current)
+        deathTimerRef.current = setTimeout(() => onDeathCompleteRef.current?.(), 600)
+        return false
+      }
+      fx.start = performance.now()
+      fx.mode = 'die'
+      fx.cx = pipDrawRef.current.cx                             // frozen where he was struck
+      fx.feetY = pipDrawRef.current.feetY
+      setTimeout(playLightningSfx, STRIKE_IMPACT_MS - LIGHTNING_SFX_LEAD_MS)
+      clearTimeout(deathTimerRef.current)
+      deathTimerRef.current = setTimeout(
+        () => onDeathCompleteRef.current?.(),
+        DEATH_TOTAL_MS + DEATH_HOLD_MS
+      )
+      return true
+    }, [])
+
+
     const bossGeomRef = useRef({ cx: 0, w: 0 })     // where the boss stands on the canvas (set while drawing); Pip dashes to it
     const playBaselineRef = useRef(playToken)   // a Run/hit that is already counted when a level loads is stale, not a new action
     const hitBaselineRef = useRef(hitToken)
@@ -1507,6 +1671,8 @@ function playPipAttackSfx() {
       librarianSprite: LIBRARIAN_CONFIGS[currentLevel]?.asset || null,
       armSprite: currentLevel === 8 ? LEVEL8_ARM_ASSET : null,
       drawbridgeSprite: drawbridgeConfig ? DRAWBRIDGE_ASSET : null,
+      pipDeathSprite: DEATH_SHEET_SRC,
+      strikeSprite: STRIKE_SHEET_SRC,
     }
 
     // Which lesson/run this position belongs to. The start position is immutable
@@ -2107,6 +2273,70 @@ function playPipAttackSfx() {
     ? characterFeetY
     : currentLevel === 7 ? level7PipFeetLine : getTileY(px)
       const CY_base = pipFeetLine - totalBob
+      pipDrawRef.current = {
+  cx: centerOverride ?? (pose === 'idle'
+    ? Math.max(4, tileWidth * 0.04) + (visualTile + 0.5) * tileWidth
+    : visualTile * tileWidth),
+  feetY: pipFeetLine,
+}
+
+        // ── Lightning strike / death (pip-death.png) is drawn INSTEAD of Pip while it plays ──
+      const deathSheet = imgs.current.pipDeathSprite
+      const dfx = deathFxRef.current
+      if (deathSheet && deathSheet.naturalWidth > 0 && dfx.start !== null) {
+        const dt = performance.now() - dfx.start
+        let fi = -1, acc = 0
+        if (dfx.mode === 'die') {
+          fi = DEATH_FRAMES.length - 1                             // last step (embers) is held
+          for (let i = 0; i < DEATH_FRAMES.length - 1; i++) {
+            if (dt < acc + DEATH_FRAMES[i].ms) { fi = i; break }
+            acc += DEATH_FRAMES[i].ms
+          }
+        } else {                                                   // 'strike': first 6 timeline steps only
+          for (let i = 0; i < DEATH_STRIKE_MS.length; i++) {
+            if (dt < acc + DEATH_STRIKE_MS[i]) { fi = i; break }
+            acc += DEATH_STRIKE_MS[i]
+          }
+          if (fi === -1) { dfx.start = null; dfx.mode = null }     // finished: Pip is back to normal
+        }
+        if (fi >= 0) {
+          const f = DEATH_CELLS[DEATH_FRAMES[fi].cell]
+          const kk = deathSheet.naturalWidth / DEATH_SHEET_REF.w   // in case the file is resized
+          const s = getPipRenderHeight() / DEATH_STAND_H           // same size as idle Pip
+          const fw = f.x1 - f.x0
+          const shH = DEATH_SHEET_REF.h
+          const splitY = dfx.feetY - (DEATH_FOOT_Y - DEATH_SPLIT_Y) * s   // canvas y where the sky bolt meets Pip
+          ctx.save()
+          ctx.imageSmoothingEnabled = true
+          ctx.globalAlpha = renderAlpha
+          // 1) Pip + his aura at normal size, feet on the ground
+          ctx.drawImage(
+            deathSheet,
+            f.x0 * kk, DEATH_SPLIT_Y * kk, fw * kk, (shH - DEATH_SPLIT_Y) * kk,
+            dfx.cx - (f.cx - f.x0) * s, splitY, fw * s, (shH - DEATH_SPLIT_Y) * s
+          )
+          // 2) the lightning above him, stretched from his head all the way to the top of the canvas.
+          //    Drawn in strips: widest at the top of the canvas, tapering to Pip's own scale where it meets him.
+          if (splitY > 2) {
+            const n = DEATH_BOLT_STRIPS
+            for (let i = 0; i < n; i++) {
+              const sx = s * (1 + (DEATH_BOLT_WIDEN - 1) * (1 - (i + 0.5) / n))
+              ctx.drawImage(
+                deathSheet,
+                f.x0 * kk, (i * DEATH_SPLIT_Y / n) * kk, fw * kk, (DEATH_SPLIT_Y / n) * kk,
+                dfx.cx - (f.cx - f.x0) * sx, i * splitY / n, fw * sx, splitY / n + 0.7
+              )
+            }
+          }
+          if (fi === DEATH_STRIKE_FRAME) {                         // white flash when the bolt lands
+            ctx.globalAlpha = 0.45 * (1 - Math.min(1, (dt - acc) / 110))
+            ctx.fillStyle = '#fff'
+            ctx.fillRect(0, 0, W, H)
+          }
+          ctx.restore()
+          return
+        }
+      }
 
       const poseKey = pose === 'jump' ? 'characterJump'
                     : pose === 'land' ? 'characterLand'
@@ -2144,7 +2374,7 @@ function playPipAttackSfx() {
             const dW = wf.w * s
             const dH = wf.h * s
             const drawX = Math.round(CX + CW / 2 - wf.hx * s)      // head stays on Pip's centre line
-            const drawY = Math.round(CY_base - dH)                 // this frame's own feet on the ground
+            const drawY = Math.round(CY_base - dH)
 
             ctx.imageSmoothingEnabled = false
             ctx.globalAlpha = renderAlpha
@@ -2543,7 +2773,36 @@ function playPipAttackSfx() {
       return true
     }, [])
 
-    // Wrapper so the overlay is always drawn LAST, even though the walk pose
+    // Lightning bolt (strike.png): starts at the very top of the canvas and comes down onto Pip.
+    function drawLightningBolt(ctx) {
+      const fx = deathFxRef.current
+      const sheet = imgs.current.strikeSprite
+      if (fx.start === null || !sheet || !sheet.naturalWidth) return
+      const dt = performance.now() - fx.start
+      if (dt < 0 || dt >= STRIKE_TOTAL_MS) return
+      let fi = STRIKE_FRAMES.length - 1, acc = 0
+      for (let i = 0; i < STRIKE_FRAMES.length; i++) {
+        if (dt < acc + STRIKE_FRAMES[i].ms) { fi = i; break }
+        acc += STRIKE_FRAMES[i].ms
+      }
+      const f = STRIKE_FRAMES[fi]
+      const k = sheet.naturalWidth / STRIKE_SHEET_REF.w          // in case the file is resized
+      const pipS = getPipRenderHeight() / DEATH_STAND_H
+      const sy = (fx.feetY - 6) / (STRIKE_GROUND_Y - STRIKE_TOP_Y)   // top of canvas -> Pip's feet
+      const sx = Math.min(Math.max(sy, pipS * 1.2), pipS * 2.4)      // keep the bolt slim next to Pip
+      const left = fx.cx - (f.cx - f.x0) * sx
+      const top = 6 - STRIKE_TOP_Y * sy                              // bolt's top star sits at the top edge
+      ctx.save()
+      ctx.imageSmoothingEnabled = true
+      ctx.drawImage(
+        sheet,
+        f.x0 * k, 0, (f.x1 - f.x0) * k, STRIKE_SHEET_REF.h * k,
+        left, top, (f.x1 - f.x0) * sx, STRIKE_SHEET_REF.h * sy
+      )
+      ctx.restore()
+    }
+
+        // Wrapper so the overlay is always drawn LAST, even though the walk pose
     // returns early from drawSceneInner. On Island 3 it also shakes the screen
     // when Pip is hit.
     function drawScene(...args) {
@@ -2559,6 +2818,7 @@ function playPipAttackSfx() {
         }
       }
       drawSceneInner(...args)
+      drawLightningBolt(ctx)
       if (boss) drawBossOverlay(ctx, performance.now())
       if (shaken) ctx.restore()
     }
@@ -2758,6 +3018,46 @@ function playPipAttackSfx() {
       const t = setTimeout(() => triggerFireIgnite(), 400)
       return () => clearTimeout(t)
     }, [lessonId, resetToken, replayToken, assetsReady, currentLevel]) // eslint-disable-line
+
+      // Pip's lightning hit / death: a new level, reset or replay brings him back to life
+    useEffect(() => {
+      deathFxRef.current = { start: null, mode: null, cx: 0, feetY: 0 }
+      clearTimeout(deathTimerRef.current)
+      clearTimeout(deathDelayRef.current)
+      deathBaselineRef.current = deathToken
+      strikeBaselineRef.current = strikeToken
+    }, [lessonId, resetToken, replayToken]) // eslint-disable-line
+
+    // The lesson page bumps strikeToken on EVERY wrong answer (isDying is true on the last heart)
+    useEffect(() => {
+      if (!strikeToken || strikeToken === strikeBaselineRef.current) return
+      if (isBossIsland) {
+        // Island 3: the golem hits Pip, not lightning. Only the last heart plays the death, after the rock lands.
+        if (isDying) {
+          clearTimeout(deathDelayRef.current)
+          deathDelayRef.current = setTimeout(triggerPipDeath, BOSS_HIT_DELAY_MS)
+        }
+        return
+      }
+      if (isDying) triggerPipDeath()      // last heart -> whole sheet
+      else triggerPipStrike()             // hearts left -> first 5 frames
+    }, [strikeToken]) // eslint-disable-line
+
+    // The old triggers still work: a deathToken bump, or window.dispatchEvent(new Event('cq:pip-death'))
+    useEffect(() => {
+      if (!deathToken || deathToken === deathBaselineRef.current) return
+      triggerPipDeath()
+    }, [deathToken]) // eslint-disable-line
+
+    useEffect(() => {
+      const onDeath = () => triggerPipDeath()
+      window.addEventListener('cq:pip-death', onDeath)
+      return () => {
+        window.removeEventListener('cq:pip-death', onDeath)
+        clearTimeout(deathTimerRef.current)
+        clearTimeout(deathDelayRef.current)
+      }
+    }, [triggerPipDeath])
 
     // Island 3, NEW LEVEL: fresh boss effects, and remember the current tokens so a
     // Run / lost-life that happened on the previous level cannot fire here (this was
@@ -3844,7 +4144,7 @@ function playPipAttackSfx() {
           const endTile = startTile + jumpDistance
           const startY = getTileY(startTile)
           const targetY = getTileY(endTile)
-          const jumpHeight = Math.max(48, Math.min(120, groundY * 0.22))
+                    const jumpHeight = Math.max(48, Math.min(120, groundY * 0.22)) * (getPipRenderHeight() / BASE_PIP_RENDER_HEIGHT)
           const start = performance.now(), dur = 500
           function fr(t) {
             if (cancelled || executionVersion !== executionVersionRef.current) return
@@ -3930,6 +4230,7 @@ function playPipAttackSfx() {
     // container size to match.
     const canvasWidth  = fullHeight ? Math.max(1, Math.round(canvasW)) : 1280
     const canvasHeight = fullHeight ? canvasH : 320
+    const compact = canvasHeight < 340
 
     // Island 2 only: keep the speech bubble fully inside the canvas. Pip stands
     // near the edges on some levels, which used to push the bubble off-screen.
@@ -3946,32 +4247,31 @@ function playPipAttackSfx() {
     return (
       <div ref={wrap} style={{ position:'relative', width:'100%', height:'100%', minHeight: fullHeight ? '100%' : 320, background:'#C7D2F8', pointerEvents:'none' }}>
         {!isBossIsland && <div style={{
-          position:'absolute', top:14, left:14,
-          display:'flex', alignItems:'center', gap:8,
-          background:'rgba(15,23,42,0.56)', color:'#fff',
-          border:'1px solid rgba(255,255,255,0.2)', borderRadius:12,
-          padding:'7px 10px', fontSize:12, fontWeight:700,
-          letterSpacing:'0.04em', textTransform:'uppercase',
-          boxShadow:'0 10px 24px rgba(15,23,42,0.22)', zIndex:2, pointerEvents:'none'
-        }}>
-          <span style={{ opacity: 0.8 }}>Tiles</span>
-          <span style={{ fontFamily:"'JetBrains Mono', monospace", fontSize:14 }}>{Math.max(0, runMovedTiles)} / {target || 3}</span>
-        </div>}
+  position:'absolute', top: compact ? 8 : 14, left: compact ? 8 : 14,
+  display:'flex', alignItems:'center', gap: compact ? 5 : 8,
+  background:'rgba(15,23,42,0.56)', color:'#fff',
+  border:'1px solid rgba(255,255,255,0.2)', borderRadius: compact ? 8 : 12,
+  padding: compact ? '4px 7px' : '7px 10px', fontSize: compact ? 10 : 12, fontWeight:700,
+  letterSpacing:'0.04em', textTransform:'uppercase',
+  boxShadow:'0 10px 24px rgba(15,23,42,0.22)', zIndex:2, pointerEvents:'none'
+}}>
+  <span style={{ opacity: 0.8 }}>Tiles</span>
+  <span style={{ fontFamily:"'JetBrains Mono', monospace", fontSize: compact ? 12 : 14 }}>{Math.max(0, runMovedTiles)} / {target || 3}</span>
+</div>}
 
-        {/* Map level indicator */}
-        <div style={{
-          position:'absolute', top:14, left: isBossIsland ? 14 : 140,
-          display:'flex', flexDirection:'column', gap:2,
-          background:'rgba(79,70,229,0.56)', color:'#fff',
-          border:'1px solid rgba(255,255,255,0.2)', borderRadius:12,
-          padding:'7px 10px', fontSize:11, fontWeight:700,
-          letterSpacing:'0.04em', textTransform:'uppercase',
-          boxShadow:'0 10px 24px rgba(15,23,42,0.22)', zIndex:2,
-          maxWidth:200, pointerEvents:'none'
-        }}>
-          {levelLabel && <span style={{ opacity: 0.9, fontSize:10 }}>{levelLabel}</span>}
-          {levelTitle && <span style={{ fontSize:12, fontWeight:700, lineHeight:1.2 }}>{levelTitle}</span>}
-        </div>
+<div style={{
+  position:'absolute', top: compact ? 8 : 14, left: isBossIsland ? (compact ? 8 : 14) : (compact ? 100 : 140),
+  display:'flex', flexDirection:'column', gap:2,
+  background:'rgba(79,70,229,0.56)', color:'#fff',
+  border:'1px solid rgba(255,255,255,0.2)', borderRadius: compact ? 8 : 12,
+  padding: compact ? '4px 7px' : '7px 10px', fontSize: compact ? 9 : 11, fontWeight:700,
+  letterSpacing:'0.04em', textTransform:'uppercase',
+  boxShadow:'0 10px 24px rgba(15,23,42,0.22)', zIndex:2,
+  maxWidth: compact ? 150 : 200, pointerEvents:'none'
+}}>
+  {levelLabel && <span style={{ opacity: 0.9, fontSize: compact ? 8 : 10 }}>{levelLabel}</span>}
+  {levelTitle && <span style={{ fontSize: compact ? 10 : 12, fontWeight:700, lineHeight:1.2 }}>{levelTitle}</span>}
+</div>
 
         <canvas
           ref={cvs}

@@ -14,7 +14,6 @@ import {
 } from '../utils/GameStateManager'
 import { getLessonByIslandAndLevel } from '../data/lessons'
 import IslandClearedModal from '../components/IslandClearedModal'
-import PlayerDeath from '../components/PlayerDeath'
 import { C, Ico, Pill, Toast } from '../components/UI'
 import './LessonPage.css'
 import {
@@ -3057,6 +3056,9 @@ const deathResolveRef = useRef(null)
             }
             onNextLevel={goToNext}
             onIslandComplete={goToNext}
+            strikeToken={lightningToken}
+            isDying={isDying}
+            onPipDeathComplete={finishLightningDeath}
             fullHeight
           />
         </div>
@@ -3174,14 +3176,7 @@ const deathResolveRef = useRef(null)
         </div>
       </div>
 
-      {/* PLAYER DEATH */}
-      <PlayerDeath
-        wrongAnswers={wrongAnswers}
-        strikeToken={lightningToken}
-        isDying={isDying}
-        position={deathPosition}
-        onAnimationComplete={finishLightningDeath}
-      />
+      
 
       {showGameOver && (
         <div
