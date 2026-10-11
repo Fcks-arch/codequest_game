@@ -1,4 +1,5 @@
 const db = require('../config/db')
+const crypto = require('crypto')
 
 // GET /api/progress
 async function getProgress(req, res) {
@@ -30,6 +31,15 @@ async function completeLesson(req, res) {
   try {
     connection = await db.getConnection()
     await connection.beginTransaction()
+
+    const [userRows] = await connection.query(
+      'SELECT id, name FROM users WHERE id = ? FOR UPDATE',
+      [user_id]
+    )
+    if (userRows.length === 0) {
+      await connection.rollback()
+      return res.status(404).json({ message: 'User not found.' })
+    }
 
     const [lessonRows] = await connection.query(
       `SELECT lessons.xp_reward, lessons.module_id, lesson_modules.title AS module_title,
@@ -69,11 +79,11 @@ async function completeLesson(req, res) {
     let newXp
     let newLevel
     if (!xpAlreadyAwarded) {
-      const [userRows] = await connection.query(
-        'SELECT xp FROM users WHERE id = ? FOR UPDATE',
+      const [xpRows] = await connection.query(
+        'SELECT xp FROM users WHERE id = ?',
         [user_id]
       )
-      newXp    = userRows[0].xp + xpReward
+      newXp    = xpRows[0].xp + xpReward
       newLevel = Math.floor(newXp / 100) + 1
 
       await connection.query(
@@ -84,6 +94,54 @@ async function completeLesson(req, res) {
         'UPDATE student_progress SET xp_awarded = TRUE WHERE user_id = ? AND lesson_id = ?',
         [user_id, lesson_id]
       )
+    }
+
+    const [courseTotals] = await connection.query(
+      `SELECT COUNT(*) AS total,
+              COUNT(student_progress.id) AS completed
+       FROM lessons
+       JOIN lesson_modules ON lesson_modules.id = lessons.module_id
+       LEFT JOIN student_progress
+         ON student_progress.lesson_id = lessons.id
+        AND student_progress.user_id = ?
+        AND student_progress.phase = 'completed'
+       WHERE lessons.is_active = TRUE AND lesson_modules.is_active = TRUE`,
+      [user_id]
+    )
+
+    let certificate = null
+    const courseIsComplete = Number(courseTotals[0].total) > 0 &&
+      Number(courseTotals[0].completed) === Number(courseTotals[0].total)
+
+    if (courseIsComplete) {
+      const courseName = 'Java Programming'
+      const [existingCertificates] = await connection.query(
+        `SELECT id, certificate_code AS certificateId, course_name AS courseName,
+                student_name AS recipientName, issued_at AS completionDate
+         FROM certificates WHERE user_id = ? AND course_name = ? LIMIT 1`,
+        [user_id, courseName]
+      )
+
+      if (existingCertificates.length > 0) {
+        certificate = existingCertificates[0]
+      } else {
+        const certificateId = `CQ-${String(new Date().getFullYear()).slice(-2)}-${crypto.randomBytes(6).toString('hex').toUpperCase()}`
+        await connection.query(
+          `INSERT INTO certificates
+             (user_id, certificate_code, course_name, student_name, issued_at)
+           VALUES (?, ?, ?, ?, NOW())`,
+          [user_id, certificateId, courseName, userRows[0].name]
+        )
+
+        const [newCertificates] = await connection.query(
+          `SELECT id, certificate_code AS certificateId, course_name AS courseName,
+                  student_name AS recipientName, issued_at AS completionDate
+           FROM certificates WHERE user_id = ? AND course_name = ? LIMIT 1`,
+          [user_id, courseName]
+        )
+        certificate = newCertificates[0] || null
+        if (!certificate) throw new Error('Certificate could not be confirmed after insertion.')
+      }
     }
 
     await connection.commit()
@@ -148,7 +206,8 @@ async function completeLesson(req, res) {
       xpAwarded: xpAlreadyAwarded ? 0 : xpReward,
       newXp,
       newLevel,
-      awardedBadges
+      awardedBadges,
+      certificate
     })
   } catch (err) {
     if (connection) {

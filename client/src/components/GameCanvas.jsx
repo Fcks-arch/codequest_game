@@ -330,8 +330,8 @@ const PIP_SIZE_BOOST = 1.0      // 1.0 = exactly proportional; try 1.1-1.25 if P
   const DEBUG_GATE = false
   const GATE_VIS = { x0: 0.052, y0: 0.193, x1: 0.980, y1: 0.775 }
   const GATE_TARGET = { x0: 0.822, y0: 0.141, x1: 1.0, y1: 0.655 }
-  const GOLEM_GAP = -8
-  const GOLEM_PILLAR_LEFT_FRAC = 0.82
+  const GOLEM_GAP = 12
+  const GOLEM_PILLAR_LEFT_FRAC = 0.79
   const GATE_CONFIGS = {
     default: { asset: '/assets/gate.png', vis: GATE_VIS, target: GATE_TARGET },
   }
@@ -2245,7 +2245,7 @@ const GROUND_FRACTION_BY_LESSON = { 118: LEVEL5_GROUND_FRACTION }
           : GOLEM_GROUND_X - (renderedWidth / 2)
         const pillarSafeDrawX = W * GOLEM_PILLAR_LEFT_FRAC - renderedWidth
         const drawX = Math.round(Math.min(gateRelativeDrawX, pillarSafeDrawX))
-        const drawY = Math.round(BRIDGE_GROUND_Y - renderedHeight)
+        const drawY = Math.round(BRIDGE_GROUND_Y - renderedHeight + 80)
         const currentFrame = Math.max(0, Math.min(GOLEM_FRAME_COUNT - 1, golemFrameRef.current))
         const sourceX = Math.round(currentFrame * frameWidth)
 

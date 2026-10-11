@@ -3,6 +3,11 @@ import axios from 'axios'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, Camera, LogOut } from 'lucide-react'
 import QuestNav from '../components/QuestNav'
+import {
+  CertificateCard,
+  CertificateView,
+  LockedCertificateCard
+} from '../components/Certificate'
 import { useAuth } from '../context/AuthContext'
 
 const DEFAULT_AVATAR = 'https://api.dicebear.com/7.x/adventurer/svg?seed=codequest'
@@ -22,7 +27,40 @@ export default function ProfilePage() {
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [rankInfo, setRankInfo] = useState({ rank: null, total: 0 })
+  const [certificates, setCertificates] = useState([])
+  const [certificatesLoading, setCertificatesLoading] = useState(true)
+  const [certificatesError, setCertificatesError] = useState('')
+  const [certificateDownloadId, setCertificateDownloadId] = useState(null)
+  const [selectedCertificate, setSelectedCertificate] = useState(null)
   const fileInputRef = useRef(null)
+
+  useEffect(() => {
+    if (!user) return
+    let cancelled = false
+    setCertificatesLoading(true)
+    setCertificatesError('')
+
+    axios.get('/api/certificates/me')
+      .then(res => {
+        if (!cancelled) {
+          setCertificates(Array.isArray(res.data.certificates) ? res.data.certificates : [])
+        }
+      })
+      .catch(err => {
+        if (!cancelled) {
+          setCertificatesError(
+            err.response?.data?.message || 'Could not load your certificates. Please refresh to try again.'
+          )
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setCertificatesLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [user?.id])
 
   useEffect(() => {
     if (!user) return
@@ -114,6 +152,36 @@ export default function ProfilePage() {
     } finally {
       setSaving(false)
     }
+  }
+
+  const downloadCertificate = async certificate => {
+    setCertificateDownloadId(certificate.certificateId)
+    setCertificatesError('')
+    try {
+      const response = await axios.get(
+        `/api/certificates/${encodeURIComponent(certificate.certificateId)}/pdf`,
+        { responseType: 'blob' }
+      )
+      const url = URL.createObjectURL(response.data)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `${certificate.certificateId}.pdf`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      setCertificatesError(
+        err.response?.data?.message || 'The certificate PDF could not be downloaded. Please try again.'
+      )
+    } finally {
+      setCertificateDownloadId(null)
+    }
+  }
+
+  const printCertificate = certificate => {
+    setSelectedCertificate(certificate)
+    window.setTimeout(() => window.print(), 300)
   }
 
   return (
@@ -253,7 +321,60 @@ export default function ProfilePage() {
             </form>
           </div>
         </div>
+
+        <section className="profile-card certificate-section" aria-labelledby="my-certificates-heading">
+          <h2 className="certificate-section__heading" id="my-certificates-heading">
+            My Certificates
+          </h2>
+          <p className="certificate-section__subheading">
+            Your earned CodeQuest course certificates are saved to your account.
+          </p>
+          {certificatesLoading ? (
+            <p className="certificate-section__status" role="status">Loading certificates...</p>
+          ) : certificates.length > 0 ? (
+            <div className="certificate-section__list">
+              {certificates.map(certificate => (
+                <CertificateCard
+                  key={certificate.certificateId}
+                  certificate={certificate}
+                  onView={() => setSelectedCertificate(certificate)}
+                  onDownload={() => downloadCertificate(certificate)}
+                  onPrint={() => printCertificate(certificate)}
+                />
+              ))}
+            </div>
+          ) : certificatesError ? (
+            <p className="certificate-section__status certificate-section__status--error" role="alert">
+              {certificatesError}
+            </p>
+          ) : (
+            <>
+              <p className="certificate-section__status">
+                No certificates earned yet. Complete the full course to receive yours.
+              </p>
+              <div style={{ marginTop: 14 }}>
+                <LockedCertificateCard />
+              </div>
+            </>
+          )}
+          {certificatesError && certificates.length > 0 && (
+            <p className="certificate-section__status certificate-section__status--error" role="alert">
+              {certificatesError}
+            </p>
+          )}
+          {certificateDownloadId && (
+            <p className="certificate-section__status" role="status">
+              Preparing {certificateDownloadId} PDF...
+            </p>
+          )}
+        </section>
       </main>
+      {selectedCertificate && (
+        <CertificateView
+          certificate={selectedCertificate}
+          onClose={() => setSelectedCertificate(null)}
+        />
+      )}
     </div>
   )
 }

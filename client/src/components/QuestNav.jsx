@@ -10,7 +10,7 @@ const TABS = [
   { to: '/leaderboard', label: 'Leaderboard' },
   { to: '/progress', label: 'My Progress' },
   { to: '/quizzes', label: 'Quizzes' },
-  { to: '/classes',label: 'My Classes'},
+  { to: '/classes', label: 'My Class' },
 ]
 
 export default function QuestNav() {
@@ -56,15 +56,18 @@ export default function QuestNav() {
       </div>
 
       <div className="quest-nav__stats">
-        <Pill bg="rgba(245,213,71,.18)" col="#f5d547">
-          <Ico n="flame" s={13} c="#f5d547" /> {user?.streak || 0} day streak
-        </Pill>
-        <Pill bg="rgba(126,200,255,.15)" col="#7ec8ff">
-          <Ico n="star" s={13} c="#7ec8ff" /> Level {user?.level || 1}
-        </Pill>
-        <Pill bg="rgba(58,140,50,.2)" col="#86efac">
-          <Ico n="bolt" s={13} c="#86efac" /> {user?.xp || 0} XP
-        </Pill>
+        <div className="quest-nav__stat-pills">
+          <Pill bg="rgba(58,140,50,.2)" col="#86efac">
+            <Ico n="bolt" s={13} c="#86efac" /> {user?.xp || 0} XP
+          </Pill>
+          <Pill bg="rgba(126,200,255,.15)" col="#7ec8ff">
+            <Ico n="star" s={13} c="#7ec8ff" /> Level {user?.level || 1}
+          </Pill>
+          <Pill bg="rgba(245,213,71,.18)" col="#f5d547">
+            <Ico n="flame" s={13} c="#f5d547" /> {user?.streak || 0} day streak
+          </Pill>
+        </div>
+
         <NavLink
           to="/profile"
           end
