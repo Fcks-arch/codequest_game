@@ -589,8 +589,13 @@ const BOSS_ISLANDS = {
 // Which boss island is this lesson on? Matches the module id first, then the lesson id range
 // (safety net in case the API does not send module_id). Returns 0 when it is not a boss island.
 function getBossIslandNo(moduleId, lessonId) {
+  // module_id is the source of truth. Lesson IDs are NOT reliable:
+  // Island 1 levels 7-9 are lessons 142, 143 and 141.
+  if (Number.isFinite(moduleId) && moduleId > 0) {
+    return BOSS_ISLANDS[moduleId] ? moduleId : 0
+  }
+  // Fallback only when the API did not send module_id
   for (const [n, c] of Object.entries(BOSS_ISLANDS)) {
-    if (moduleId === Number(n)) return Number(n)
     if (lessonId >= c.firstId && lessonId < c.firstId + BOSS_TOTAL_LEVELS) return Number(n)
   }
   return 0
@@ -1280,9 +1285,10 @@ const GROUND_FRACTION_BY_LESSON = { 118: LEVEL5_GROUND_FRACTION }
     // which drew the dormant golem.png and the gate behind the boss.
     const lessonModuleId = Number(lessonData?.module_id)
     const lessonIdNum = Number(lessonId ?? lessonData?.id)
-    const isIsland2 =
-      (lessonModuleId >= 2 && lessonModuleId <= 7) ||
-      (lessonIdNum >= 109 && lessonIdNum <= ISLAND_GENERIC_LAST_LESSON_ID)   // Islands 2 to 7: lessons 109-218
+    const hasModuleId = Number.isFinite(lessonModuleId) && lessonModuleId > 0
+    const isIsland2 = hasModuleId
+  ? (lessonModuleId >= 2 && lessonModuleId <= 7)
+  : (lessonIdNum >= 109 && lessonIdNum <= ISLAND_GENERIC_LAST_LESSON_ID)
     const currentLevel = isIsland2
       ? 0
       : Number(
