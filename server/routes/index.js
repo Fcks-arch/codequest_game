@@ -12,6 +12,7 @@ const teacher = require('../controllers/teacherController');
 const quizzes = require('../controllers/quizController');
 const reports = require('../controllers/reportController');
 const classController = require('../controllers/classController');
+const certificates = require('../controllers/certificateController');
 
 
 // ========================================================
@@ -283,6 +284,28 @@ router.get(
   '/progress/leaderboard',
   authMiddleware,
   progress.getLeaderboard
+);
+
+// ========================================================
+// CERTIFICATES
+// ========================================================
+
+router.get(
+  '/certificates/me',
+  authMiddleware,
+  certificates.getMine
+);
+
+router.get(
+  '/certificates/:certificateId/pdf',
+  authMiddleware,
+  certificates.downloadPdf
+);
+
+router.get(
+  '/certificates/:certificateId',
+  authMiddleware,
+  certificates.getOne
 );
 
 

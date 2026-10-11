@@ -503,8 +503,14 @@ function validateLesson(lesson, events = [], code = '') {
   }
 
   const items = []
+  const hasCode = String(code || '').trim().length > 0
 
-  if (lesson.required_code_pattern) {
+  const shouldHideExactSolutionHint =
+    String(lesson.required_code_label || '')
+      .toLowerCase()
+      .startsWith('use the exact solution:')
+
+  if (lesson.required_code_pattern && !shouldHideExactSolutionHint) {
     let patternMatches = false
 
     try {
@@ -522,7 +528,7 @@ function validateLesson(lesson, events = [], code = '') {
     })
   }
 
-  if (lesson.solution_code) {
+  if (lesson.solution_code && hasCode) {
     const normalize = value =>
       String(value || '')
         .replace(/\s+/g, ' ')
@@ -539,7 +545,7 @@ function validateLesson(lesson, events = [], code = '') {
   if (items.length === 0) {
     items.push({
       label: 'Complete the Java solution',
-      ok: String(code || '').trim().length > 0
+      ok: hasCode
     })
   }
 
@@ -1240,6 +1246,8 @@ function FreeCodePanel({
     )
   }, [check, lesson, code])
 
+  const hasCodeStarted = String(code || '').trim().length > 0
+
   return (
     <div
       style={{
@@ -1498,7 +1506,12 @@ function FreeCodePanel({
         style={{
           flexShrink: 0,
           padding: '12px 14px',
-          borderTop: `1px solid ${C.onyx100}`
+          borderTop: `1px solid ${C.onyx100}`,
+          opacity: hasCodeStarted ? 1 : 0,
+          maxHeight: hasCodeStarted ? 240 : 0,
+          overflow: 'hidden',
+          pointerEvents: hasCodeStarted ? 'auto' : 'none',
+          transition: 'opacity .2s ease, max-height .2s ease'
         }}
       >
         <div
@@ -1606,6 +1619,7 @@ function FreeCodePanel({
           )}
         </div>
       </div>
+
 </div>{/* end free-code-scroll */}
       {/* NEXT */}
       <div
@@ -1724,6 +1738,12 @@ export default function LessonPage() {
   const [islandCleared, setIslandCleared] =
     useState(false)
 
+  const [completionCertificate, setCompletionCertificate] =
+    useState(null)
+
+  const [completionSaveError, setCompletionSaveError] =
+    useState('')
+
   const [xpGained, setXpGained] =
     useState(0)
 
@@ -1777,8 +1797,14 @@ const deathResolveRef = useRef(null)
         lesson_id: Number(lesson.id)
       })
       .then(res => {
+        setCompletionSaveError('')
         setCompleted(true)
         setLevelAlreadyCleared(true)
+
+        if (res.data.certificate) {
+          setCompletionCertificate(res.data.certificate)
+          setIslandCleared(true)
+        }
 
         markLessonCompleted(
           lesson.id,
@@ -1811,6 +1837,10 @@ const deathResolveRef = useRef(null)
       })
       .catch(err => {
         console.error(err)
+        setCompletionSaveError(
+          err.response?.data?.message ||
+          'Your completed level could not be saved. Retry to sync your progress and check certificate eligibility.'
+        )
 
         setToast({
           msg:
@@ -1856,6 +1886,8 @@ const deathResolveRef = useRef(null)
     setLevelAlreadyCleared(false)
     setCompletedCode('')
     setIslandCleared(false)
+    setCompletionCertificate(null)
+    setCompletionSaveError('')
     setShowGameOver(false)
     setXpGained(0)
     setToast(null)
@@ -3294,11 +3326,22 @@ const deathResolveRef = useRef(null)
         />
       )}
 
+      {completionSaveError && !completionCertificate && (
+        <div className="completion-save-error" role="alert">
+          <span>{completionSaveError}</span>
+          <button type="button" onClick={() => saveProgress()}>
+            Retry save
+          </button>
+        </div>
+      )}
+
       {/* ISLAND CLEARED */}
       {islandCleared && (
         <IslandClearedModal
           islandName={`Island ${lesson.module_id}`}
           xpGained={xpGained}
+          certificate={completionCertificate}
+          onGoToProfile={() => navigate('/profile')}
           onReturn={() =>
             navigate('/quest', {
               state: {

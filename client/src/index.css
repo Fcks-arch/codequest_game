@@ -21,9 +21,14 @@
 
 * { box-sizing: border-box; }
 html, body, #root { margin: 0; padding: 0; min-height: 100vh; }
+html, body {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
 body {
   font-family: 'Poppins', sans-serif;
-  background: var(--onyx-50);
+  background: #0d1d2c;
   color: var(--onyx);
   -webkit-font-smoothing: antialiased;
 }
@@ -71,6 +76,8 @@ textarea:focus { outline: none; }
 /* Landing page — medieval theme matching game art */
 .landing-page {
   min-height: 100vh;
+  min-height: 100dvh;
+  width: 100%;
   overflow: hidden;
   color: #f4ead5;
   background: #1a1208;
@@ -83,6 +90,8 @@ textarea:focus { outline: none; }
   inset: 0;
   z-index: 0;
   pointer-events: none;
+  width: 100%;
+  height: 100%;
 }
 
 .landing-scene__bg {
@@ -92,6 +101,7 @@ textarea:focus { outline: none; }
   object-position: center 38%;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
+  display: block;
 }
 
 .landing-scene__veil {
@@ -578,8 +588,72 @@ textarea:focus { outline: none; }
   font-family: 'Crimson Pro', serif;
 }
 
+@media (max-width: 900px) {
+  .landing-page {
+    background: #1a1208;
+  }
+
+  .landing-nav {
+    padding: 16px 14px;
+  }
+
+  .login-shell {
+    padding: 16px 12px 22px;
+    min-height: calc(100vh - 72px);
+    min-height: calc(100dvh - 72px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .login-card {
+    width: min(100%, 440px);
+    max-width: 100%;
+    padding: 26px 20px 24px;
+  }
+}
+
 @media (max-width: 480px) {
-  .login-card { padding: 28px 20px 24px; }
+  .landing-nav {
+    padding: 12px 12px 10px;
+  }
+
+  .brand {
+    font-size: 15px;
+  }
+
+  .brand__shield {
+    width: 28px !important;
+    height: 28px !important;
+    font-size: 13px !important;
+  }
+
+  .landing-login {
+    font-size: 10px;
+    padding: 8px 10px;
+    letter-spacing: 0.06em;
+  }
+
+  .login-card {
+    padding: 24px 16px 20px;
+    width: min(100%, 360px);
+  }
+
+  .login-title {
+    font-size: 20px;
+  }
+
+  .google-signin-container {
+    margin: 10px 0 14px;
+  }
+
+  .login-divider {
+    margin: 14px 0;
+  }
+
+  .login-card input {
+    font-size: 13px;
+  }
 }
 
 /* Island lesson map */
@@ -683,9 +757,30 @@ textarea:focus { outline: none; }
 .quest-nav__stats {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 0;
   flex-shrink: 0;
 }
+
+.quest-nav__stat-pills {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  margin-right: -4px;
+  position: relative;
+  z-index: 1;
+}
+
+.quest-nav__stat-pills > span {
+  position: relative;
+  margin: 0;
+  box-shadow: 0 0 0 1px rgba(12, 18, 26, 0.5), 0 8px 18px rgba(2, 6, 23, 0.18);
+  transition: transform 0.18s ease;
+}
+
+.quest-nav__stat-pills > span:nth-child(1) { z-index: 3; }
+.quest-nav__stat-pills > span:nth-child(2) { z-index: 2; }
+.quest-nav__stat-pills > span:nth-child(3) { z-index: 1; }
 
 .quest-nav__profile {
   position: relative;
@@ -700,8 +795,10 @@ textarea:focus { outline: none; }
   background: #1e293b;
   color: #fff;
   text-decoration: none;
-  box-shadow: 0 0 0 2px rgba(15, 23, 42, .55);
+  box-shadow: 0 0 0 2px rgba(15, 23, 42, .55), 0 8px 18px rgba(2, 6, 23, 0.2);
   transition: border-color .2s, transform .2s;
+  z-index: 4;
+  margin-left: 0;
 }
 
 .quest-nav__profile:hover,
@@ -1076,11 +1173,12 @@ textarea:focus { outline: none; }
 .profile-page .quest-nav {
   max-width: 1180px;
   margin: 0 auto;
-  padding: 16px 18px 12px;
-  background: rgba(4, 16, 27, 0.72);
+  padding: 14px 18px 12px;
+  background: rgba(5, 19, 30, 0.82);
   border: 2px solid rgba(245, 213, 71, 0.42);
-  border-radius: 0 0 8px 8px;
-  box-shadow: 0 12px 26px rgba(1, 8, 16, 0.18);
+  border-top: 0;
+  border-radius: 0 0 18px 18px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04), 0 14px 28px rgba(1, 8, 16, 0.18);
 }
 
 .profile-page .brand--medieval {
@@ -1094,8 +1192,35 @@ textarea:focus { outline: none; }
   color: #fff !important;
 }
 
+.profile-page .quest-nav__tabs {
+  gap: 8px;
+}
+
+.profile-page .quest-nav__tab {
+  font-family: 'Cinzel', serif;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+  color: #dfeaf8;
+}
+
+.profile-page .quest-nav__tab:hover,
+.profile-page .quest-nav__tab--active {
+  color: #f5d547;
+  background: rgba(13, 26, 44, 0.8);
+  border-color: rgba(245, 213, 71, 0.32);
+}
+
 .profile-page .quest-nav__stats {
   gap: 10px;
+}
+
+.profile-page .quest-nav__stats > span,
+.profile-page .quest-nav__stats > a {
+  border: 1px solid rgba(245, 213, 71, 0.36);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
 }
 
 .profile-page .quest-nav__stats > span {
