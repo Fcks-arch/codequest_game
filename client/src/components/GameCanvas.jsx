@@ -429,6 +429,27 @@ const PIP_SIZE_BOOST = 1.0      // 1.0 = exactly proportional; try 1.1-1.25 if P
   const BOSS_BUBBLE_MS = 1800 // eslint-disable-line no-unused-vars
   const BOSS_DEFEAT_COLLAPSE_MS = 1400
 
+  // Island 8 dragon sheet (dragon-boss.png, 1774x887, transparent): the exact box of every frame.
+//   fly  = 5 wing-flap frames (landing cutscene)
+//   land = 5 frames: drop, dust burst, settle (also used for the attack and the collapse)
+//   idle = 4 crouched frames (the fight)
+const DRAGON_FRAMES = {
+  fly: [
+    { x: 19,   y: 11,  w: 374, h: 315 }, { x: 423,  y: 53,  w: 367, h: 296 },
+    { x: 802,  y: 29,  w: 271, h: 320 }, { x: 1110, y: 93,  w: 318, h: 266 },
+    { x: 1465, y: 168, w: 296, h: 264 },
+  ],
+  land: [
+    { x: 21,   y: 363, w: 337, h: 261 }, { x: 361,  y: 392, w: 320, h: 237 },
+    { x: 725,  y: 435, w: 322, h: 197 }, { x: 1086, y: 457, w: 339, h: 177 },
+    { x: 1461, y: 490, w: 300, h: 144 },
+  ],
+  idle: [
+    { x: 102,  y: 677, w: 319, h: 178 }, { x: 470,  y: 682, w: 320, h: 171 },
+    { x: 830,  y: 678, w: 323, h: 176 }, { x: 1199, y: 686, w: 321, h: 168 },
+  ],
+}
+
   // ── Boss golem sheet: 2 rows x 8 frames. Row 1 = idle loop, row 2 = attack
   // (3 wind-up, slam, recoil, dust, recover, stand). Coordinates are in a
   // 1536x1024 reference and scale automatically if your file is a different size.
@@ -480,7 +501,32 @@ const PIP_SIZE_BOOST = 1.0      // 1.0 = exactly proportional; try 1.1-1.25 if P
         attack: { top: 575, bottom: 900, feet: 890, cuts: [10, 197, 386, 606, 812, 1014, 1207, 1348, 1525] },
       },
     },
+             // Island 8: the Blue Dragon. Drawn from dragon-boss.png (the same sheet as the landing
+    // cutscene) using the exact rectangles in DRAGON_FRAMES, so nothing is cut by a guessed grid.
+    //   idle   = the 4 crouched frames
+    //   attack = the landing frames played backwards, then forwards: it rears up with wings
+    //            spread (the bolt leaves at the peak, frame 4), then settles
+    //   defeat = the last landing frames: it sinks to the ground and fades
+    dragon: {
+      src: '/assets/dragon-boss.png',
+      projectile: 'bolt',
+      boltRgb: '90, 190, 255', coreRgb: '225, 246, 255',
+      cast: { x: 0.46, y: 0.68 },     // where the bolt leaves: the dragon's mouth at the rear-up peak
+      smooth: true,
+      xFrac: 0.70,                    // keep equal to DRAGON_X_FRAC in the component
+      widthFrac: 0.40,                // keep equal to DRAGON_WIDTH_FRAC in the component
+      ref: { w: 1774, h: 887 },
+      standW: 320, standH: 200,       // standH only moves the HP bar and the hit flash
+      idleFrames: 4, attackFrames: 10, slamFrame: 4, defeatFrames: [0, 1, 2],
+      rows: {
+        idle:   { frames: DRAGON_FRAMES.idle },
+        attack: { frames: [4, 3, 2, 1, 0, 0, 1, 2, 3, 4].map(i => DRAGON_FRAMES.land[i]) },
+        defeat: { frames: [2, 3, 4].map(i => DRAGON_FRAMES.land[i]) },
+      },
+    },
   }
+  // ── Boss sheets for Islands 5, 6 and 7 (each is ONE boss with 20 HP, see BOSS_SINGLE_HP) ──
+  
   // ── Boss sheets for Islands 5, 6 and 7 (each is ONE boss with 20 HP, see BOSS_SINGLE_HP) ──
 // Extra optional fields used by these sheets:
 //   xFrac = where the boss stands (fraction of the background width, default 0.80)
@@ -545,7 +591,7 @@ const ISLAND7_BOSS = {
 
 // Islands that have ONE boss for all 20 levels, with this many HP.
 // Everything not listed here uses the two-boss, 10-HP-each system (islands 3 and 4).
-const BOSS_SINGLE_HP = { 5: 20, 6: 20, 7: 20 }
+const BOSS_SINGLE_HP = { 5: 20, 6: 20, 7: 20, 8: 8 }   // 8: set to the number of questions in the fight (10 for the restored lessons 71-80)
 // Island 2 = lessons 109-118, 3 = 119-138, 4 = 139-158, 5 = 159-178, 6 = 179-198, 7 = 199-218.
 // Everything from 109 up to this id uses the Island 2+ behaviour (no Island 1 scenes).
 const ISLAND_GENERIC_LAST_LESSON_ID = 218
@@ -581,9 +627,15 @@ const BOSS_ISLANDS = {
   7: {
     firstId: 199,
     names: ['The Archive Colossus', 'The Archive Colossus'],
-    sheets: [ISLAND7_BOSS, ISLAND7_BOSS],
+        sheets: [ISLAND7_BOSS, ISLAND7_BOSS],
     tints: ['none', 'none'],
   },
+  8: {
+      firstId: 222,
+      names: ['The Null Sovereign', 'The Null Sovereign'],
+      sheets: [BOSS_SHEETS.dragon, BOSS_SHEETS.dragon],
+      tints: ['none', 'none'],
+    },
 }
 
 // Which boss island is this lesson on? Matches the module id first, then the lesson id range
@@ -1195,8 +1247,7 @@ const GROUND_FRACTION_BY_LESSON = { 118: LEVEL5_GROUND_FRACTION }
   // rounds of bug reports turned out to be an old copy of this file still
   // being served (stale dev server, browser cache, or the new file not
   // actually saved to the right path) rather than the bug persisting.
-  const BUILD_TAG = 'GameCanvas 2026-10-10 (boss islands 3-7 via BOSS_ISLANDS; islands 5-7 = single 20-HP bosses)'
-
+  const BUILD_TAG = 'GameCanvas 2026-10-13 (island 8 dragon from dragon-boss.png)'
   export default function GameCanvas({ playToken, introToken = 0, replayToken = 0, onIntroComplete, code, onResult, onCharacterPosition, target, lessonData, resetToken = 0, fullHeight, levelLabel, levelTitle, initialPipPosition, eventOffset = 0, lessonId, executionMode = 'guided', hitToken = 0, onBossDefeated, onIslandComplete, deathToken = 0, onPipDeathComplete, strikeToken = 0, isDying = false }) {
     useEffect(() => { console.log('[CodeQuest]', BUILD_TAG) }, [])
 
@@ -1287,8 +1338,8 @@ const GROUND_FRACTION_BY_LESSON = { 118: LEVEL5_GROUND_FRACTION }
     const lessonIdNum = Number(lessonId ?? lessonData?.id)
     const hasModuleId = Number.isFinite(lessonModuleId) && lessonModuleId > 0
     const isIsland2 = hasModuleId
-  ? (lessonModuleId >= 2 && lessonModuleId <= 7)
-  : (lessonIdNum >= 109 && lessonIdNum <= ISLAND_GENERIC_LAST_LESSON_ID)
+      ? (lessonModuleId >= 2 && lessonModuleId <= 8)
+      : (lessonIdNum >= 109 && lessonIdNum <= ISLAND_GENERIC_LAST_LESSON_ID)
     const currentLevel = isIsland2
       ? 0
       : Number(
@@ -1348,11 +1399,15 @@ const GROUND_FRACTION_BY_LESSON = { 118: LEVEL5_GROUND_FRACTION }
     const bossHpBefore = bossMaxHp - ((bossLevelNo - 1) % hpPerBoss)
     const bossHpAfter = Math.max(0, bossHpBefore - 1)
     const isChapterFinale = bossHpAfter <= 0                       // level 10 or 20 (level 20 on single-boss islands)
-    const isIslandFinale = bossLevelNo === BOSS_TOTAL_LEVELS       // level 20
+    const isIslandFinale = bossLevelNo === (singleBossHp || BOSS_TOTAL_LEVELS)
     const bossSheet = bossIslandCfg.sheets[bossChapter]
     const bossTint = bossCfgRaw.tint || bossIslandCfg.tints[bossChapter]
     const bossCfgRef = useRef({ enabled: false })
     bossCfgRef.current = { enabled: isBossIsland, name: bossName, maxHp: bossMaxHp, hpAfter: bossHpAfter, tint: bossTint, finale: isIslandFinale, sheet: bossSheet, islandNo: bossIslandNo }
+    const isDragonIsland = lessonModuleId === 8
+    // start: Infinity = not started yet (draw nothing), -Infinity = already landed (idle)
+    const dragonFxRef = useRef({ enabled: false, start: Infinity })
+    dragonFxRef.current.enabled = isDragonIsland
     const bossFxRef = useRef(newBossFx())
         const deathFxRef = useRef({ start: null, mode: null, cx: 0, feetY: 0 })   // mode: 'strike' (5 frames) | 'die' (all 10)
     const pipDrawRef = useRef({ cx: 0, feetY: 0 })     // where Pip was last drawn
@@ -1398,7 +1453,21 @@ const GROUND_FRACTION_BY_LESSON = { 118: LEVEL5_GROUND_FRACTION }
       return true
     }, [])
 
+    // ── Island 8: the Blue Dragon (dragon-boss.png, 1774x887, transparent) ──
+// Rows of the sheet: fly = 5 wing-flap frames, land = 5 frames (drop, dust burst, settle),
+// idle = 4 crouched frames. Rects are tight boxes measured from the art.
+const DRAGON_SRC = '/assets/dragon-boss.png'
+const DRAGON_SHEET_W = 1774
 
+    const DRAGON_REF_W = 320           // width of an idle frame in the sheet
+    const DRAGON_WIDTH_FRAC = 0.40     // idle dragon width as a fraction of the background width
+    const DRAGON_X_FRAC = 0.70         // where it lands (fraction of the background width)
+    const DRAGON_FLY_FPS = 9
+    const DRAGON_IDLE_FPS = 6
+    const DRAGON_FLY_MS = 2600         // sweep in from the top right
+    const DRAGON_DROP_MS = 450         // last drop to the ground (land frame 0)
+    const DRAGON_TOUCH_MS = [140, 140, 140, 160]   // land frames 1-4: dust burst and settle
+    const DRAGON_INTRO_MS = DRAGON_FLY_MS + DRAGON_DROP_MS + DRAGON_TOUCH_MS.reduce((a, b) => a + b, 0)
     const bossGeomRef = useRef({ cx: 0, w: 0 })     // where the boss stands on the canvas (set while drawing); Pip dashes to it
     const playBaselineRef = useRef(playToken)   // a Run/hit that is already counted when a level loads is stale, not a new action
     const hitBaselineRef = useRef(hitToken)
@@ -1833,6 +1902,7 @@ const GROUND_FRACTION_BY_LESSON = { 118: LEVEL5_GROUND_FRACTION }
       drawbridgeSprite: drawbridgeConfig ? DRAWBRIDGE_ASSET : null,
       pipDeathSprite: DEATH_SHEET_SRC,
       strikeSprite: STRIKE_SHEET_SRC,
+      dragonSprite: isDragonIsland ? DRAGON_SRC : null,
     }
 
     // Which lesson/run this position belongs to. The start position is immutable
@@ -1968,7 +2038,7 @@ const GROUND_FRACTION_BY_LESSON = { 118: LEVEL5_GROUND_FRACTION }
         }
       })
       return () => { cancelled = true }
-    }, [ASSETS.background, currentMap, currentLevel, isBossIsland, bossSheet.src]) // eslint-disable-line
+        }, [ASSETS.background, currentMap, currentLevel, isBossIsland, bossSheet.src, isDragonIsland]) // eslint-disable-line
 
     function getGateRect(gateImg) {
       if (!gateImg || gateImg.naturalWidth <= 0 || gateImg.naturalHeight <= 0) return null
@@ -2636,7 +2706,8 @@ const GROUND_FRACTION_BY_LESSON = { 118: LEVEL5_GROUND_FRACTION }
     // ── Island 3: boss, HP bar, shockwave, floating damage and hurt effects ──
     // Drawn AFTER Pip, so it works even though the walk pose returns early
     // from drawSceneInner.
-    function drawBossOverlay(ctx, now) {
+        function drawBossOverlay(ctx, now) {
+      if (dragonFxRef.current.enabled && now - dragonFxRef.current.start < DRAGON_INTRO_MS) return
       const cfg = bossCfgRef.current
       const W = ctx.canvas.width
       const H = ctx.canvas.height
@@ -2666,7 +2737,9 @@ const GROUND_FRACTION_BY_LESSON = { 118: LEVEL5_GROUND_FRACTION }
       const sh = cfg.sheet || BOSS_SHEETS.island3
       const attackFrameMs = BOSS_SLAM_AT / Math.max(1, sh.slamFrame)
       const attackMs = attackFrameMs * sh.attackFrames
-      const u = (H * sh.heightFrac) / sh.standH         // screen px per sheet px
+      const u = sh.widthFrac
+  ? (imgW * sh.widthFrac) / sh.standW
+  : (H * sh.heightFrac) / sh.standH               // screen px per sheet px
       const bossH = sh.standH * u
       const bossW = sh.standW * u
       const bossCx = imgX + imgW * (sh.xFrac ?? 0.80)
@@ -2701,18 +2774,24 @@ const GROUND_FRACTION_BY_LESSON = { 118: LEVEL5_GROUND_FRACTION }
         frame = Math.min(sh.attackFrames - 1, Math.floor(sinceAttack / attackFrameMs))
       }
 
-      if (sheet && sheet.naturalWidth > 0) {
+           if (sheet && sheet.naturalWidth > 0) {
         const row = sh.rows[rowKey]
         const kx = sheet.naturalWidth / sh.ref.w
         const ky = sheet.naturalHeight / sh.ref.h
-        const x0 = row.cuts[frame]
-        const x1 = row.cuts[frame + 1]
-        const dwF = (x1 - x0) * u
-        const dhF = (row.bottom - row.top) * u
+        // Exact frames (row.frames[i] = { x, y, w, h }) carry their own crop and stand on the ground
+        // by their bottom edge. Rows with only `cuts` use the row's shared top / bottom / feet.
+        const fr = row.frames?.[frame]
+        const srcX = fr ? fr.x : row.cuts[frame]
+        const srcW = fr ? fr.w : row.cuts[frame + 1] - row.cuts[frame]
+        const srcY = fr ? fr.y : row.top
+        const srcH = fr ? fr.h : row.bottom - row.top
+        const srcFeet = fr ? fr.y + fr.h : row.feet
+        const dwF = srcW * u
+        const dhF = srcH * u
         const destX = bossCx - dwF / 2 + shakeX
-        const destY = feet + SINK - (row.feet - row.top) * u
+        const destY = feet + SINK - (srcFeet - srcY) * u
         ctx.save()
-        ctx.imageSmoothingEnabled = false
+        ctx.imageSmoothingEnabled = !!sh.smooth   // the dragon is smooth, like its landing cutscene
         ctx.globalAlpha = alpha
         const filters = []
         if (cfg.tint && cfg.tint !== 'none') filters.push(cfg.tint)
@@ -2722,17 +2801,9 @@ const GROUND_FRACTION_BY_LESSON = { 118: LEVEL5_GROUND_FRACTION }
           // this row faces right in the art: mirror it around its own cell
           ctx.translate(Math.round(destX) + dwF, 0)
           ctx.scale(-1, 1)
-          ctx.drawImage(
-            sheet,
-            x0 * kx, row.top * ky, (x1 - x0) * kx, (row.bottom - row.top) * ky,
-            0, Math.round(destY), dwF, dhF
-          )
+          ctx.drawImage(sheet, srcX * kx, srcY * ky, srcW * kx, srcH * ky, 0, Math.round(destY), dwF, dhF)
         } else {
-          ctx.drawImage(
-            sheet,
-            x0 * kx, row.top * ky, (x1 - x0) * kx, (row.bottom - row.top) * ky,
-            Math.round(destX), Math.round(destY), dwF, dhF
-          )
+          ctx.drawImage(sheet, srcX * kx, srcY * ky, srcW * kx, srcH * ky, Math.round(destX), Math.round(destY), dwF, dhF)
         }
         ctx.restore()
       }
@@ -3079,25 +3150,108 @@ const GROUND_FRACTION_BY_LESSON = { 118: LEVEL5_GROUND_FRACTION }
         // Wrapper so the overlay is always drawn LAST, even though the walk pose
     // returns early from drawSceneInner. On Island 3 it also shakes the screen
     // when Pip is hit.
-    function drawScene(...args) {
-      const ctx = args[0]
-      const boss = bossCfgRef.current.enabled
-      let shaken = false
-      if (boss) {
-        const sinceHurt = performance.now() - bossFxRef.current.hurtStart
-        if (sinceHurt >= 0 && sinceHurt < 380) {
-          ctx.save()
-          shaken = true
-          ctx.translate(Math.sin(sinceHurt / 18) * 7 * (1 - sinceHurt / 380), 0)
-        }
-      }
-      drawSceneInner(...args)
-      drawLightningBolt(ctx)
-      if (boss) drawBossOverlay(ctx, performance.now())
-      if (shaken) ctx.restore()
-    }
+   function drawDragon(ctx, now) {
+  const fx = dragonFxRef.current
+  const sheet = imgs.current.dragonSprite
+  const { dx, dw } = bgRenderRectRef.current
+  if (!fx.enabled || !sheet || !sheet.naturalWidth || !(dw > 0)) return
+  const t = now - fx.start
+  if (t < 0) return                                    // cutscene has not started yet
 
-    drawSceneRef.current = drawScene
+  const H = ctx.canvas.height
+  const feet = Number.isFinite(groundLineRef.current) && groundLineRef.current > 0
+    ? groundLineRef.current
+    : H * 0.78
+  const k = sheet.naturalWidth / DRAGON_SHEET_W
+  const s = (dw * DRAGON_WIDTH_FRAC) / DRAGON_REF_W
+  const landX = dx + dw * DRAGON_X_FRAC
+  const hover = dw * 0.06
+  const lerp = (a, b, p) => a + (b - a) * p
+
+  const draw = (f, cx, bottom) => {
+    ctx.save()
+    ctx.imageSmoothingEnabled = true
+    ctx.drawImage(
+      sheet,
+      f.x * k, f.y * k, f.w * k, f.h * k,
+      cx - (f.w * s) / 2, bottom - f.h * s, f.w * s, f.h * s
+    )
+    ctx.restore()
+  }
+  const shadow = (cx, widthPx, a) => {
+    if (a <= 0) return
+    ctx.save()
+    ctx.fillStyle = `rgba(0, 0, 0, ${a})`
+    ctx.beginPath()
+    ctx.ellipse(cx, feet - 2, widthPx / 2, Math.max(4, widthPx * 0.05), 0, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.restore()
+  }
+
+    const { fly, land } = DRAGON_FRAMES
+
+  // A) Fly in from the top right, wings flapping, descending towards the landing spot
+  if (t < DRAGON_FLY_MS) {
+    const u = t / DRAGON_FLY_MS
+    const f = fly[Math.floor(t / (1000 / DRAGON_FLY_FPS)) % fly.length]
+    const cx = lerp(dx + dw * 1.08, landX, 1 - Math.pow(1 - u, 3))
+    const cy = lerp(-f.h * s * 0.6, feet - hover - (f.h * s) / 2, Math.sin((u * Math.PI) / 2))
+    shadow(cx, f.w * s * 0.7, 0.28 * u * u)
+    draw(f, cx, cy + (f.h * s) / 2)
+    return
+  }
+
+  // B) Last drop to the ground
+  const tDrop = t - DRAGON_FLY_MS
+  if (tDrop < DRAGON_DROP_MS) {
+    const p = tDrop / DRAGON_DROP_MS
+    shadow(landX, land[0].w * s * 0.7, 0.28 + 0.1 * p)
+    draw(land[0], landX, lerp(feet - hover, feet, p * p))
+    return
+  }
+
+  // C) Touchdown: dust burst and settle (the screen shake is in drawScene)
+  let tTouch = tDrop - DRAGON_DROP_MS
+  for (let i = 0; i < DRAGON_TOUCH_MS.length; i++) {
+    if (tTouch < DRAGON_TOUCH_MS[i]) {
+      shadow(landX, land[i + 1].w * s * 0.7, 0.38)
+      draw(land[i + 1], landX, feet)
+      return
+    }
+    tTouch -= DRAGON_TOUCH_MS[i]
+  }
+
+  // D) After the landing the boss overlay draws the idle dragon
+}
+
+function drawScene(...args) {
+  const ctx = args[0]
+  const nowT = performance.now()
+  const boss = bossCfgRef.current.enabled
+  const dragon = dragonFxRef.current
+  let shakeX = 0
+  if (boss) {
+    const sinceHurt = nowT - bossFxRef.current.hurtStart
+    if (sinceHurt >= 0 && sinceHurt < 380) {
+      shakeX += Math.sin(sinceHurt / 18) * 7 * (1 - sinceHurt / 380)
+    }
+  }
+  if (dragon.enabled) {
+    const sinceTouch = nowT - dragon.start - DRAGON_FLY_MS - DRAGON_DROP_MS
+    if (sinceTouch >= 0 && sinceTouch < 450) {
+      shakeX += Math.sin(sinceTouch / 18) * 9 * (1 - sinceTouch / 450)
+    }
+  }
+  if (shakeX) {
+    ctx.save()
+    ctx.translate(shakeX, 0)
+  }
+  drawSceneInner(...args)
+  drawLightningBolt(ctx)
+  if (dragon.enabled) drawDragon(ctx, nowT)
+  if (boss) drawBossOverlay(ctx, nowT)
+  if (shakeX) ctx.restore()
+}
 
     // Start idle loop once assets are ready; keep it running whenever idle
     useEffect(() => {
@@ -3409,7 +3563,7 @@ const GROUND_FRACTION_BY_LESSON = { 118: LEVEL5_GROUND_FRACTION }
         movementRunning.current = false
         walkFrameIndexRef.current = 0
         startIdleLoop()
-        onIntroComplete?.()
+        if (!(isDragonIsland && introToken > 0)) onIntroComplete?.()   // the dragon effect completes the intro itself
       }
 
       const step = now => {
@@ -3417,7 +3571,9 @@ const GROUND_FRACTION_BY_LESSON = { 118: LEVEL5_GROUND_FRACTION }
         if (start === null) start = now
 
         const elapsed = now - start
-        const introMs = currentLevel === 8 ? LEVEL8_INTRO_MS : ISLAND_ENTRANCE_MS
+        const introMs = (isDragonIsland && introToken === 0)
+          ? 1                       // levels 2-8: no walk-in, Pip is placed on his start tile
+          : currentLevel === 8 ? LEVEL8_INTRO_MS : ISLAND_ENTRANCE_MS
         const p = Math.min(1, elapsed / introMs)
         const eased = 1 - Math.pow(1 - p, 2)   // ease-out: slows down as he arrives
 
@@ -3569,6 +3725,16 @@ const GROUND_FRACTION_BY_LESSON = { 118: LEVEL5_GROUND_FRACTION }
         if (raf.current) cancelAnimationFrame(raf.current)
       }
     }, [introToken, assetsReady, usesSharedStart, isLevelTwo, sharedStartPosition, skipsWalkCutscene, entranceStartTile]) // eslint-disable-line
+
+
+    // Island 8: the dragon flies in and lands. introToken > 0 plays it, otherwise it is already there.
+useEffect(() => {
+  if (!isDragonIsland || !assetsReady) return undefined
+  const play = introToken > 0
+  dragonFxRef.current.start = play ? performance.now() : -Infinity
+  const timer = play ? setTimeout(() => onIntroComplete?.(), DRAGON_INTRO_MS) : null
+  return () => { if (timer) clearTimeout(timer) }
+}, [introToken, lessonId, resetToken, assetsReady, isDragonIsland]) // eslint-disable-line
 
     useEffect(() => {
       if (playToken === 0) return
@@ -4026,6 +4192,7 @@ const GROUND_FRACTION_BY_LESSON = { 118: LEVEL5_GROUND_FRACTION }
         }
       }
 
+      
     if (isLocalLevelSevenSuccess || isLocalLevelEightSuccess) {
     executionFinished = true
     const startTile = pipX
@@ -4266,7 +4433,8 @@ const GROUND_FRACTION_BY_LESSON = { 118: LEVEL5_GROUND_FRACTION }
         const willWalk = endTile > startTile
         const tileTarget = Number(target) || endTile
         const walkMs = willWalk ? Math.max(1400, (endTile - startTile) * 450) : 0
-        const outText = getSolutionOutputText(lessonData?.solution_code)
+        const outText = String(config?.bubble_text || '').trim() ||
+        getSolutionOutputText(lessonData?.solution_code)
 
         const W = ctx.canvas.width
         const tileW = W / Math.max(1, totalTiles)

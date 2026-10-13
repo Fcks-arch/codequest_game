@@ -1,1829 +1,2457 @@
-import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react'
-import { useParams, useNavigate, useLocation } from 'react-router-dom'
-import { ArrowLeft, RotateCw, Smartphone } from 'lucide-react'
-import axios from 'axios'
-import { useAuth } from '../context/AuthContext'
-import GameCanvas, { startBgMusic, stopBgMusic } from '../components/GameCanvas'
-import CodeEditor, { lintJava } from '../components/CodeEditor'
-import {
-  clearLocallyCompletedLessonIds,
-  getIslandLives,
-  markLessonCompleted,
-  resetIslandLives,
-  setIslandLives
-} from '../utils/GameStateManager'
-import { getLessonByIslandAndLevel } from '../data/lessons'
-import IslandClearedModal from '../components/IslandClearedModal'
-import { C, Ico, Pill, Toast } from '../components/UI'
-import './LessonPage.css'
-import {
-  FREE_CODE_SAFETY_MESSAGE,
-  validateFreeCode
-} from '../utils/validateFreeCode'
+  import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react'
+  import { useParams, useNavigate, useLocation } from 'react-router-dom'
+  import { ArrowLeft, RotateCw, Smartphone } from 'lucide-react'
+  import axios from 'axios'
+  import { useAuth } from '../context/AuthContext'
+  import GameCanvas, { startBgMusic, stopBgMusic } from '../components/GameCanvas'
+  import CodeEditor, { lintJava } from '../components/CodeEditor'
+  import {
+    clearLocallyCompletedLessonIds,
+    getIslandLives,
+    markLessonCompleted,
+    resetIslandLives,
+    setIslandLives
+  } from '../utils/GameStateManager'
+  import { getLessonByIslandAndLevel } from '../data/lessons'
+  import IslandClearedModal from '../components/IslandClearedModal'
+  import RecallCutscene, { MemoryOrbs, MEMORIES } from '../components/RecallCutscene'
+  import { C, Ico, Pill, Toast } from '../components/UI'
+  import './LessonPage.css'
+  import {
+    FREE_CODE_SAFETY_MESSAGE,
+    validateFreeCode
+  } from '../utils/validateFreeCode'
 
-const FREE_CODE_PROMPT = '// Write your Java code here...'
+  const FREE_CODE_PROMPT = '// Write your Java code here...'
 
-const LEVEL_START_POSITIONS = {
-  1: 0,
-  2: 5
-}
-
-function javaLabel(value) {
-  return String(value || '')
-    .replace(/JavaScript Foundations/g, 'JAVA FOUNDATIONS')
-    .replace(/JavaScript/g, 'Java')
-}
-
-function getActiveIslandId(lesson, location) {
-  const stateIslandId = Number(location?.state?.islandId)
-  const lessonIslandId = Number(
-    lesson?.moduleId ??
-    lesson?.module_id ??
-    lesson?.islandId
-  )
-  const storedIslandId = Number(
-    window.localStorage.getItem('activeIslandId')
-  )
-
-  if (Number.isFinite(stateIslandId) && stateIslandId > 0) {
-    return stateIslandId
+  const LEVEL_START_POSITIONS = {
+    1: 0,
+    2: 5
   }
 
-  if (Number.isFinite(lessonIslandId) && lessonIslandId > 0) {
-    return lessonIslandId
+  function javaLabel(value) {
+    return String(value || '')
+      .replace(/JavaScript Foundations/g, 'JAVA FOUNDATIONS')
+      .replace(/JavaScript/g, 'Java')
   }
 
-  if (Number.isFinite(storedIslandId) && storedIslandId > 0) {
-    return storedIslandId
-  }
+  function getActiveIslandId(lesson, location) {
+    const stateIslandId = Number(location?.state?.islandId)
+    const lessonIslandId = Number(
+      lesson?.moduleId ??
+      lesson?.module_id ??
+      lesson?.islandId
+    )
+    const storedIslandId = Number(
+      window.localStorage.getItem('activeIslandId')
+    )
 
-  return Number(
-    location?.pathname?.match(/\/island\/(\d+)/)?.[1]
-  )
-}
-
-function getIslandRoute(lesson, location) {
-  const islandId = getActiveIslandId(lesson, location)
-
-  return Number.isFinite(islandId) && islandId > 0
-    ? `/island/${islandId}`
-    : '/quest'
-}
-
-// Island 3 has 20 levels (2 bosses x 10 levels each). Every other island has 10.
-function getIslandLevelCount(islandId) {
-  return Number(islandId) === 3 ? 20 : 10
-}
-
-function shuffle(arr) {
-  const a = [...arr]
-
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1))
-
-    ;[a[i], a[j]] = [a[j], a[i]]
-  }
-
-  return a
-}
-
-function lessonSummary(lesson) {
-  const raw = String(
-    lesson?.briefing ||
-    lesson?.description ||
-    lesson?.goal ||
-    ''
-  ).trim()
-
-  if (raw) {
-    const normalized = raw.replace(/\s+/g, ' ').trim()
-
-    if (normalized.length > 220) {
-      return normalized.slice(0, 220).trim() + '…'
+    if (Number.isFinite(stateIslandId) && stateIslandId > 0) {
+      return stateIslandId
     }
 
-    return normalized
+    if (Number.isFinite(lessonIslandId) && lessonIslandId > 0) {
+      return lessonIslandId
+    }
+
+    if (Number.isFinite(storedIslandId) && storedIslandId > 0) {
+      return storedIslandId
+    }
+
+    return Number(
+      location?.pathname?.match(/\/island\/(\d+)/)?.[1]
+    )
   }
 
-  return lesson?.title
-    ? `This Java lesson uses ordered statements and method calls to complete ${lesson.title}.`
-    : 'This Java lesson uses ordered statements and method calls to complete the task.'
-}
+  function getIslandRoute(lesson, location) {
+    const islandId = getActiveIslandId(lesson, location)
 
-function guidedJavaSummary(code) {
-  if (
-    /\b(?:int|double|float|long|short|byte|char|boolean|String)\s+\w+\s*=/
-      .test(code)
-  ) {
-    return 'You declared a typed variable in Java and used it in a method call.'
+    return Number.isFinite(islandId) && islandId > 0
+      ? `/island/${islandId}`
+      : '/quest'
   }
 
-  return 'You built a Java statement using explicit types, values, and semicolons.'
-}
+    const FINAL_ISLAND_ID = 8
+    function getIslandMaxLives(islandId) { return Number(islandId) === FINAL_ISLAND_ID ? 5 : 3 }
+    function getIslandLevelCount(islandId) {
+      if (Number(islandId) === FINAL_ISLAND_ID) return 8
+      return Number(islandId) === 3 ? 20 : 10
+    }
 
-function briefingNotes(lesson) {
-  const notes = (lesson?.concepts || [])
-    .map(concept => String(concept.note || '').trim())
-    .filter(Boolean)
+  function shuffle(arr) {
+    const a = [...arr]
 
-  return notes.length > 0
-    ? notes
-    : [guidedJavaSummary('')]
-}
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1))
 
-function LessonBriefing({ lesson }) {
-  return (
-    <div
-      style={{
-        marginTop: 14,
-        borderTop: `1px solid ${C.onyx100}`,
-        paddingTop: 12
-      }}
-    >
+      ;[a[i], a[j]] = [a[j], a[i]]
+    }
+
+    return a
+  }
+
+  function lessonSummary(lesson) {
+    const raw = String(
+      lesson?.briefing ||
+      lesson?.description ||
+      lesson?.goal ||
+      ''
+    ).trim()
+
+    if (raw) {
+      const normalized = raw.replace(/\s+/g, ' ').trim()
+
+      if (normalized.length > 220) {
+        return normalized.slice(0, 220).trim() + '…'
+      }
+
+      return normalized
+    }
+
+    return lesson?.title
+      ? `This Java lesson uses ordered statements and method calls to complete ${lesson.title}.`
+      : 'This Java lesson uses ordered statements and method calls to complete the task.'
+  }
+
+  function guidedJavaSummary(code) {
+    if (
+      /\b(?:int|double|float|long|short|byte|char|boolean|String)\s+\w+\s*=/
+        .test(code)
+    ) {
+      return 'You declared a typed variable in Java and used it in a method call.'
+    }
+
+    return 'You built a Java statement using explicit types, values, and semicolons.'
+  }
+
+  function briefingNotes(lesson) {
+    const notes = (lesson?.concepts || [])
+      .map(concept => String(concept.note || '').trim())
+      .filter(Boolean)
+
+    return notes.length > 0
+      ? notes
+      : [guidedJavaSummary('')]
+  }
+
+  function LessonBriefing({ lesson }) {
+    return (
       <div
         style={{
-          fontSize: 11,
-          fontWeight: 700,
-          color: C.onyx400,
-          textTransform: 'uppercase',
-          letterSpacing: '.04em',
-          marginBottom: 7
+          marginTop: 14,
+          borderTop: `1px solid ${C.onyx100}`,
+          paddingTop: 12
         }}
       >
-        Briefing
-      </div>
+        <div
+          style={{
+            fontSize: 11,
+            fontWeight: 700,
+            color: C.onyx400,
+            textTransform: 'uppercase',
+            letterSpacing: '.04em',
+            marginBottom: 7
+          }}
+        >
+          Briefing
+        </div>
 
-      <p
-        style={{
-          fontSize: 12,
-          color: C.onyx600,
-          lineHeight: 1.7,
-          margin: '0 0 7px'
-        }}
-      >
-        {lessonSummary(lesson)}
-      </p>
-
-      {briefingNotes(lesson).map((note, index) => (
         <p
-          key={index}
           style={{
             fontSize: 12,
             color: C.onyx600,
-            lineHeight: 1.55,
-            margin: '0 0 5px'
+            lineHeight: 1.7,
+            margin: '0 0 7px'
           }}
         >
-          {note}
+          {lessonSummary(lesson)}
         </p>
-      ))}
-    </div>
-  )
-}
 
-function NextLevelButton({
-  onNext,
-  isFinalLevel = false,
-  isCleared = false,
-  completed = false
-}) {
-  const enabled = isCleared || completed
-
-  return (
-    <button
-      type="button"
-      className="lesson-guided__next"
-      onClick={onNext}
-      disabled={!enabled}
-      style={{
-        width: '100%',
-        background: C.emerald,
-        color: '#fff',
-        border: 'none',
-        borderRadius: 10,
-        padding: '12px 10px',
-        fontSize: 13,
-        fontWeight: 700,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 5,
-        cursor: enabled ? 'pointer' : 'not-allowed',
-        opacity: enabled ? 1 : 0.45
-      }}
-    >
-      <span>
-        {isFinalLevel ? 'Return to Map 🏆' : 'Next Level >'}
-      </span>
-
-      <Ico
-        n={isFinalLevel ? 'trophy' : 'chevRight'}
-        s={12}
-        c="#fff"
-      />
-    </button>
-  )
-}
-
-function parseJsonValue(value, fallback = null) {
-  if (value === null || value === undefined || value === '') return fallback
-
-  if (typeof value !== 'string') return value
-
-  try {
-    return JSON.parse(value)
-  } catch (_) {
-    return fallback
-  }
-}
-
-function normalizeLineBreakdown(lesson) {
-  const raw =
-    lesson?.line_breakdown ??
-    lesson?.lineBreakdown ??
-    lesson?.line_breakdowns ??
-    null
-
-  const parsed = parseJsonValue(raw, raw)
-
-  if (!Array.isArray(parsed)) return []
-
-  return parsed
-    .map((item, index) => {
-      if (typeof item === 'string') {
-        return {
-          part: `Part ${index + 1}`,
-          explanation: item
-        }
-      }
-
-      if (!item || typeof item !== 'object') return null
-
-      const part = String(
-        item.part ??
-        item.code ??
-        item.line ??
-        item.label ??
-        ''
-      ).trim()
-
-      const explanation = String(
-        item.explanation ??
-        item.description ??
-        item.note ??
-        ''
-      ).trim()
-
-      if (!part && !explanation) return null
-
-      return {
-        part: part || `Part ${index + 1}`,
-        explanation: explanation || 'This part contributes to the lesson solution.'
-      }
-    })
-    .filter(Boolean)
-}
-
-function GenericCodeBreakdown({ code }) {
-  const lines = String(code || '')
-    .split('\\n')
-    .map(line => line.trim())
-    .filter(Boolean)
-
-  if (lines.length === 0) return null
-
-  return (
-    <div style={{ marginTop: 12 }}>
-      <div
-        style={{
-          fontSize: 10,
-          color: C.onyx400,
-          fontWeight: 700,
-          letterSpacing: '.05em',
-          marginBottom: 7
-        }}
-      >
-        CODE BREAKDOWN
-      </div>
-
-      {lines.map((line, index) => (
-        <div
-          key={`${line}-${index}`}
-          style={{
-            marginBottom: 7,
-            padding: '8px 9px',
-            background: C.onyx50,
-            border: `1px solid ${C.onyx100}`,
-            borderRadius: 8
-          }}
-        >
-          <div
+        {briefingNotes(lesson).map((note, index) => (
+          <p
+            key={index}
             style={{
-              fontFamily: "'JetBrains Mono',monospace",
-              fontSize: 11.5,
-              color: C.purple,
-              fontWeight: 700,
-              marginBottom: 3,
-              whiteSpace: 'pre-wrap'
-            }}
-          >
-            {line}
-          </div>
-          <div
-            style={{
-              fontSize: 11.5,
+              fontSize: 12,
               color: C.onyx600,
-              lineHeight: 1.5
+              lineHeight: 1.55,
+              margin: '0 0 5px'
             }}
           >
-            This line is part of the Java solution for this lesson.
-          </div>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function LessonLineBreakdown({ lesson, code }) {
-  const breakdown = normalizeLineBreakdown(lesson)
-
-  if (breakdown.length === 0) {
-    return <GenericCodeBreakdown code={code} />
-  }
-
-  return (
-    <div style={{ marginTop: 14 }}>
-      <div
-        style={{
-          fontSize: 10,
-          color: C.onyx400,
-          fontWeight: 700,
-          letterSpacing: '.05em',
-          marginBottom: 8
-        }}
-      >
-        LINE BREAKDOWN
-      </div>
-
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 7
-        }}
-      >
-        {breakdown.map((item, index) => (
-          <div
-            key={`${item.part}-${index}`}
-            style={{
-              padding: '9px 10px',
-              background: '#F8FAFC',
-              border: `1px solid ${C.onyx100}`,
-              borderRadius: 9
-            }}
-          >
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'flex-start',
-                gap: 8
-              }}
-            >
-              <div
-                style={{
-                  width: 20,
-                  height: 20,
-                  minWidth: 20,
-                  borderRadius: 6,
-                  background: C.purpleLight,
-                  color: C.purple,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: 10,
-                  fontWeight: 800
-                }}
-              >
-                {index + 1}
-              </div>
-
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div
-                  style={{
-                    fontFamily: "'JetBrains Mono',monospace",
-                    fontSize: 11.5,
-                    fontWeight: 700,
-                    color: C.onyx,
-                    lineHeight: 1.45,
-                    whiteSpace: 'pre-wrap',
-                    wordBreak: 'break-word'
-                  }}
-                >
-                  {item.part}
-                </div>
-
-                <div
-                  style={{
-                    marginTop: 3,
-                    fontSize: 11.5,
-                    color: C.onyx600,
-                    lineHeight: 1.55
-                  }}
-                >
-                  {item.explanation}
-                </div>
-              </div>
-            </div>
-          </div>
+            {note}
+          </p>
         ))}
       </div>
-    </div>
-  )
-}
+    )
+  }
 
-function CompletionReview({ lesson, code }) {
-  const selectedCode =
-    String(code || '').trim() ||
-    '// No code was captured for this completion.'
+  function NextLevelButton({
+    onNext,
+    isFinalLevel = false,
+    isCleared = false,
+    completed = false
+  }) {
+    const enabled = isCleared || completed
 
-  return (
-    <div style={{ marginTop: 14 }}>
-      <LessonBriefing lesson={lesson} />
-
-      <div
+    return (
+      <button
+        type="button"
+        className="lesson-guided__next"
+        onClick={onNext}
+        disabled={!enabled}
         style={{
-          marginTop: 12,
-          background: '#0B1220',
-          borderRadius: 9,
-          padding: '10px 11px',
-          maxHeight: 142,
-          overflowY: 'auto'
+          width: '100%',
+          background: C.emerald,
+          color: '#fff',
+          border: 'none',
+          borderRadius: 10,
+          padding: '12px 10px',
+          fontSize: 13,
+          fontWeight: 700,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 5,
+          cursor: enabled ? 'pointer' : 'not-allowed',
+          opacity: enabled ? 1 : 0.45
         }}
       >
+        <span>
+          {isFinalLevel ? 'Return to Map 🏆' : 'Next Level >'}
+        </span>
+
+        <Ico
+          n={isFinalLevel ? 'trophy' : 'chevRight'}
+          s={12}
+          c="#fff"
+        />
+      </button>
+    )
+  }
+
+  function parseJsonValue(value, fallback = null) {
+    if (value === null || value === undefined || value === '') return fallback
+
+    if (typeof value !== 'string') return value
+
+    try {
+      return JSON.parse(value)
+    } catch (_) {
+      return fallback
+    }
+  }
+
+  function normalizeLineBreakdown(lesson) {
+    const raw =
+      lesson?.line_breakdown ??
+      lesson?.lineBreakdown ??
+      lesson?.line_breakdowns ??
+      null
+
+    const parsed = parseJsonValue(raw, raw)
+
+    if (!Array.isArray(parsed)) return []
+
+    return parsed
+      .map((item, index) => {
+        if (typeof item === 'string') {
+          return {
+            part: `Part ${index + 1}`,
+            explanation: item
+          }
+        }
+
+        if (!item || typeof item !== 'object') return null
+
+        const part = String(
+          item.part ??
+          item.code ??
+          item.line ??
+          item.label ??
+          ''
+        ).trim()
+
+        const explanation = String(
+          item.explanation ??
+          item.description ??
+          item.note ??
+          ''
+        ).trim()
+
+        if (!part && !explanation) return null
+
+        return {
+          part: part || `Part ${index + 1}`,
+          explanation: explanation || 'This part contributes to the lesson solution.'
+        }
+      })
+      .filter(Boolean)
+  }
+
+  function GenericCodeBreakdown({ code }) {
+    const lines = String(code || '')
+      .split('\\n')
+      .map(line => line.trim())
+      .filter(Boolean)
+
+    if (lines.length === 0) return null
+
+    return (
+      <div style={{ marginTop: 12 }}>
         <div
           style={{
             fontSize: 10,
-            color: '#94A3B8',
-            fontFamily: "'JetBrains Mono',monospace",
-            marginBottom: 6,
-            letterSpacing: '.06em'
+            color: C.onyx400,
+            fontWeight: 700,
+            letterSpacing: '.05em',
+            marginBottom: 7
           }}
         >
-          SELECTED ANSWERS / CODE
+          CODE BREAKDOWN
         </div>
 
-        <pre
-          style={{
-            margin: 0,
-            whiteSpace: 'pre-wrap',
-            fontFamily: "'JetBrains Mono',monospace",
-            fontSize: 12,
-            color: '#86EFAC',
-            lineHeight: '20px'
-          }}
-        >
-          {selectedCode}
-        </pre>
-      </div>
-
-      <LessonLineBreakdown
-        lesson={lesson}
-        code={selectedCode}
-      />
-    </div>
-  )
-}
-
-function validateLesson(lesson, events = [], code = '') {
-  if (!lesson) {
-    return {
-      passed: false,
-      items: []
-    }
-  }
-
-  const items = []
-  const hasCode = String(code || '').trim().length > 0
-
-  const shouldHideExactSolutionHint =
-    String(lesson.required_code_label || '')
-      .toLowerCase()
-      .startsWith('use the exact solution:')
-
-  if (lesson.required_code_pattern && !shouldHideExactSolutionHint) {
-    let patternMatches = false
-
-    try {
-      patternMatches = new RegExp(
-        lesson.required_code_pattern,
-        'm'
-      ).test(code)
-    } catch (_) {}
-
-    items.push({
-      label:
-        lesson.required_code_label ||
-        'Use required code pattern',
-      ok: patternMatches
-    })
-  }
-
-  if (lesson.solution_code && hasCode) {
-    const normalize = value =>
-      String(value || '')
-        .replace(/\s+/g, ' ')
-        .trim()
-
-    items.push({
-      label: 'Match the lesson solution',
-      ok:
-        normalize(code) ===
-        normalize(lesson.solution_code)
-    })
-  }
-
-  if (items.length === 0) {
-    items.push({
-      label: 'Complete the Java solution',
-      ok: hasCode
-    })
-  }
-
-  return {
-    passed:
-      items.length > 0 &&
-      items.every(item => item.ok),
-    items
-  }
-}
-
-/* =========================================================
-   GUIDED PANEL
-   ========================================================= */
-
-function GuidedPanel({
-  lesson,
-  disabled = false,
-  onUnlock,
-  onNext,
-  onStepCorrect,
-  onWrongAnswer,
-  onAllStepsDone,
-  taskComplete,
-  levelAlreadyCleared,
-  completedCode,
-  isFinalLevel,
-  lives
-}) {
-  const [stepIdx, setStepIdx] = useState(0)
-  const [chosen, setChosen] = useState(null)
-  const [built, setBuilt] = useState([])
-  const [shakeKey, setShakeKey] = useState(0)
-  const [allDone, setAllDone] = useState(false)
-
-  const builtRef = useRef([])
-
-  const guidedSteps = Array.isArray(lesson.guided)
-    ? lesson.guided
-    : []
-
-  /* Reset the Guided Panel whenever the lesson changes */
-  useEffect(() => {
-    setStepIdx(0)
-    setChosen(null)
-    setBuilt([])
-    setShakeKey(0)
-    setAllDone(false)
-
-    builtRef.current = []
-  }, [lesson.id])
-
-  const step = guidedSteps[stepIdx]
-
-  const stepPrompt = String(
-    step?.prompt ||
-    step?.question ||
-    ''
-  ).trim()
-
-  const stepBriefing = String(
-    step?.briefing ||
-    lesson?.briefing ||
-    ''
-  ).trim()
-
-  const options = useMemo(() => {
-    if (!step) return []
-
-    if (
-      Array.isArray(step.options) &&
-      step.options.length > 0
-    ) {
-      return shuffle(
-        step.options.filter(
-          value =>
-            value !== null &&
-            value !== undefined &&
-            String(value).trim() !== ''
-        )
-      )
-    }
-
-    const dbChoices = [
-      step.correct_snippet,
-      step.correct_answer,
-      step.distractor_1,
-      step.distractor_2,
-      step.distractor_3
-    ].filter(
-      value =>
-        value !== null &&
-        value !== undefined &&
-        String(value).trim() !== ''
-    )
-
-    return shuffle(dbChoices)
-  }, [stepIdx, lesson.id, step])
-
-  /* =========================================================
-     ANSWER PICKER
-     ========================================================= */
-
-  const pick = useCallback(
-    opt => {
-      /*
-       * Prevent multiple clicks while the current
-       * answer animation is running.
-       */
-      if (chosen || disabled) return
-
-      if (!step) return
-
-      const correctTarget =
-        step.correct_snippet ??
-        step.correct_answer
-
-      const selected = String(opt ?? '')
-      const correct = String(correctTarget ?? '')
-
-      /* -------------------------
-         CORRECT ANSWER
-         ------------------------- */
-      if (selected === correct) {
-        const newBuilt = [
-          ...builtRef.current,
-          selected
-        ]
-
-        builtRef.current = newBuilt
-
-        setChosen({
-          text: selected,
-          correct: true
-        })
-
-        const isFinalStep =
-          stepIdx + 1 >= guidedSteps.length
-
-        if (onStepCorrect) {
-          onStepCorrect(
-            selected,
-            newBuilt.join('\n'),
-            isFinalStep
-          )
-        }
-
-        setTimeout(() => {
-          setBuilt([...newBuilt])
-          setChosen(null)
-
-          if (isFinalStep) {
-            setAllDone(true)
-
-            onAllStepsDone?.(
-              newBuilt.join('\n')
-            )
-          } else {
-            setStepIdx(current => current + 1)
-          }
-        }, 550)
-
-        return
-      }
-
-      /* -------------------------
-         WRONG ANSWER
-         ------------------------- */
-
-      setChosen({
-        text: selected,
-        correct: false
-      })
-
-      setShakeKey(key => key + 1)
-
-      /*
-       * Tell LessonPage that the player
-       * made another wrong answer.
-       */
-      onWrongAnswer?.()
-
-      setTimeout(() => {
-        setChosen(null)
-      }, 650)
-    },
-    [
-      chosen,
-      step,
-      stepIdx,
-      guidedSteps.length,
-      onStepCorrect,
-      onWrongAnswer,
-      onAllStepsDone,
-      disabled
-    ]
-  )
-
-  const progress = allDone
-    ? guidedSteps.length
-    : stepIdx
-
-  const pct =
-    guidedSteps.length > 0
-      ? (progress / guidedSteps.length) * 100
-      : 0
-
-  return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        flex: 1,
-        minHeight: 0,
-        overflow: 'hidden'
-      }}
-    >
-      {/* PROGRESS HEADER */}
-      <div
-        className="lesson-guided__header"
-        style={{
-          padding: '14px 16px 10px',
-          borderBottom: `1px solid ${C.onyx100}`,
-          flexShrink: 0
-        }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            marginBottom: 6
-          }}
-        >
-          <span
-            style={{
-              fontSize: 11,
-              fontWeight: 700,
-              color: C.purple,
-              textTransform: 'uppercase',
-              letterSpacing: '.06em'
-            }}
-          >
-            Guided Mode
-          </span>
-
-          <span
-            style={{
-              fontSize: 11,
-              color: C.onyx400,
-              fontWeight: 500
-            }}
-          >
-            {progress} / {guidedSteps.length}
-          </span>
-        </div>
-
-        <div
-          style={{
-            height: 5,
-            background: C.onyx100,
-            borderRadius: 999,
-            overflow: 'hidden'
-          }}
-        >
+        {lines.map((line, index) => (
           <div
+            key={`${line}-${index}`}
             style={{
-              height: '100%',
-              width: `${pct}%`,
-              background: `linear-gradient(90deg,${C.purple},${C.emerald})`,
-              borderRadius: 999,
-              transition: 'width .4s ease'
-            }}
-          />
-        </div>
-
-        {!levelAlreadyCleared && (
-          <div className="lesson-lives">
-            <span className="lesson-lives-label">
-              LIVES
-            </span>
-
-            <div className="lesson-hearts">
-              {[0, 1, 2].map(index => (
-                <span
-                  key={index}
-                  className={
-                    index < lives
-                      ? 'life-heart active'
-                      : 'life-heart lost'
-                  }
-                >
-                  ♥
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-
-      </div>
-
-      {/* CONTENT */}
-      <div
-        className="lesson-guided__content"
-        style={{
-          flex: 1,
-          overflowY: 'auto',
-          padding: '12px 14px'
-        }}
-      >
-        {guidedSteps.length === 0 && (
-          <div
-            style={{
-              fontSize: 13,
-              color: C.onyx500,
-              textAlign: 'center',
-              marginTop: 20,
-              lineHeight: 1.5
+              marginBottom: 7,
+              padding: '8px 9px',
+              background: C.onyx50,
+              border: `1px solid ${C.onyx100}`,
+              borderRadius: 8
             }}
           >
-            No guided steps found for this lesson.
-            You can proceed directly to Free Code mode
-            below.
-          </div>
-        )}
-
-        {!allDone && step && (
-          <>
-            {/* BRIEFING */}
-            {stepBriefing && (
-              <div
-                className="lesson-guided__briefing"
-                style={{
-                  marginBottom: 12,
-                  background: '#F4F1FF',
-                  border: `1px solid ${C.purpleLight}`,
-                  borderRadius: 12,
-                  padding: '10px 12px'
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: 10,
-                    color: C.purple,
-                    fontWeight: 700,
-                    letterSpacing: '.06em',
-                    textTransform: 'uppercase',
-                    marginBottom: 6
-                  }}
-                >
-                  Level Briefing
-                </div>
-
-                <div
-                  style={{
-                    fontSize: 12.5,
-                    color: C.onyx700,
-                    lineHeight: 1.6,
-                    whiteSpace: 'pre-wrap'
-                  }}
-                >
-                  {stepBriefing}
-                </div>
-              </div>
-            )}
-
-            {/* QUESTION */}
             <div
-              className="lesson-guided__prompt"
               style={{
-                fontSize: 13,
-                color: C.onyx700,
-                fontWeight: 600,
-                lineHeight: 1.6,
-                marginBottom: 12,
-                background: C.purpleLight,
-                borderRadius: 10,
-                padding: '10px 12px'
-              }}
-            >
-              <b>
-                Step {stepIdx + 1} —{' '}
-              </b>
-
-              {stepPrompt}
-            </div>
-
-            {/* ANSWERS */}
-            <div
-              className="lesson-guided__answers"
-              key={`${lesson.id}-${stepIdx}-${shakeKey}`}
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 7
-              }}
-            >
-              {options.length === 0 ? (
-                <div
-                  style={{
-                    fontSize: 12,
-                    color: C.onyx400
-                  }}
-                >
-                  No options available for this step.
-                </div>
-              ) : (
-                options.map((opt, i) => {
-                  const isChosen =
-                    chosen &&
-                    String(chosen.text) ===
-                      String(opt)
-
-                  const isCorrect =
-                    isChosen &&
-                    chosen.correct
-
-                  const isWrong =
-                    isChosen &&
-                    !chosen.correct
-
-                  return (
-                    <button
-                      key={`${String(opt)}-${i}`}
-                      type="button"
-                      disabled={!!chosen || disabled}
-                      onClick={() => pick(opt)}
-                      className={`lesson-guided__answer${isWrong ? ' shake' : ''}`}
-                      style={{
-                        background: isCorrect
-                          ? C.emeraldLight
-                          : isWrong
-                            ? '#FEECEC'
-                            : '#fff',
-
-                        border: `1.5px solid ${
-                          isCorrect
-                            ? C.emerald
-                            : isWrong
-                              ? '#EF4444'
-                              : C.onyx100
-                        }`,
-
-                        borderRadius: 10,
-                        padding: '10px 12px',
-                        textAlign: 'left',
-
-                        fontFamily:
-                          "'JetBrains Mono',monospace",
-
-                        fontSize: 12.5,
-
-                        color: isCorrect
-                          ? C.emeraldDark
-                          : isWrong
-                            ? '#EF4444'
-                            : C.onyx700,
-
-                        fontWeight: 500,
-
-                        cursor: chosen || disabled
-                          ? 'default'
-                          : 'pointer',
-
-                        transition: 'all .12s',
-                        lineHeight: 1.5,
-                        width: '100%',
-                        whiteSpace: 'pre-wrap',
-
-                        /*
-                         * Makes sure the button remains
-                         * above accidental overlapping
-                         * canvas elements.
-                         */
-                        position: 'relative',
-                        zIndex: 2,
-
-                        pointerEvents: chosen || disabled
-                          ? 'none'
-                          : 'auto'
-                      }}
-                    >
-                      {opt}
-                    </button>
-                  )
-                })
-              )}
-            </div>
-          </>
-        )}
-
-        {/* COMPLETED GUIDED MODE */}
-        {allDone && (
-          <>
-            <div
-              className="toast-pop"
-              style={{
-                background: C.emeraldLight,
-                color: C.emeraldDark,
-                borderRadius: 12,
-                padding: '12px 14px',
-                fontSize: 13,
-                fontWeight: 600,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                marginBottom: 12
-              }}
-            >
-              <Ico
-                n="check"
-                s={15}
-                c={C.emeraldDark}
-              />
-
-              All steps done!
-            </div>
-
-            {taskComplete && (
-              <CompletionReview
-                lesson={lesson}
-                code={
-                  completedCode ||
-                  built.join('\n')
-                }
-              />
-            )}
-          </>
-        )}
-      </div>
-
-      {/* SELECTED CODE */}
-      {!taskComplete && (
-        <div
-          className={`lesson-guided__selected-code${built.length === 0 ? ' lesson-guided__selected-code--empty' : ''}`}
-          style={{
-            flexShrink: 0,
-            background: '#0B1220',
-            borderTop: '1px solid #1E293B',
-            padding: '10px 14px',
-            maxHeight: 120,
-            overflowY: 'auto'
-          }}
-        >
-          <div
-            style={{
-              fontSize: 10,
-              color: '#475569',
-              fontFamily:
-                "'JetBrains Mono',monospace",
-              marginBottom: 4,
-              letterSpacing: '.06em'
-            }}
-          >
-            SELECTED ANSWERS / CODE
-          </div>
-
-          {built.map((line, i) => (
-            <div
-              key={i}
-              className="slide-up"
-              style={{
-                fontFamily:
-                  "'JetBrains Mono',monospace",
-                fontSize: 12,
-                color: '#86EFAC',
-                lineHeight: '20px'
+                fontFamily: "'JetBrains Mono',monospace",
+                fontSize: 11.5,
+                color: C.purple,
+                fontWeight: 700,
+                marginBottom: 3,
+                whiteSpace: 'pre-wrap'
               }}
             >
               {line}
             </div>
-          ))}
-
-          {!allDone &&
-            guidedSteps.length > 0 && (
-              <div
-                style={{
-                  fontFamily:
-                    "'JetBrains Mono',monospace",
-                  fontSize: 12,
-                  color: '#334155'
-                }}
-              >
-                █
-              </div>
-            )}
-        </div>
-      )}
-
-      {/* BOTTOM BUTTONS */}
-      <div
-        className="lesson-guided__footer"
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 7,
-          padding: '10px 12px',
-          flexShrink: 0,
-          borderTop: `1px solid ${C.onyx100}`
-        }}
-      >
-        {(allDone ||
-          taskComplete ||
-          guidedSteps.length === 0) && (
-          <button
-            type="button"
-            onClick={() =>
-              onUnlock(
-                builtRef.current.join('\n')
-              )
-            }
-            className="toast-pop"
-            style={{
-              width: '100%',
-              background: C.purple,
-              color: '#fff',
-              border: 'none',
-              padding: '12px 10px',
-              fontSize: 13,
-              fontWeight: 700,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 8,
-              cursor: 'pointer',
-              borderRadius: 10
-            }}
-          >
-            <Ico
-              n="unlock"
-              s={15}
-              c="#fff"
-            />
-
-            Continue to Free Code
-          </button>
-        )}
-
-        {!taskComplete && !allDone && (
-          <div
-            className="lesson-guided__footer-note"
-            style={{
-              marginBottom: 8,
-              fontSize: 11,
-              color: C.onyx400,
-              textAlign: 'center'
-            }}
-          >
-            Select the correct code step above
-            to complete the level.
-          </div>
-        )}
-
-        <NextLevelButton
-          onNext={onNext}
-          isFinalLevel={isFinalLevel}
-          isCleared={taskComplete || allDone}
-          completed={taskComplete}
-        />
-      </div>
-    </div>
-  )
-}
-
-/* =========================================================
-   FREE CODE PANEL
-   ========================================================= */
-
-function FreeCodePanel({
-  lesson,
-  disabled = false,
-  starterCode,
-  check,
-  onRun,
-  hint,
-  onHint,
-  completed,
-  completedCode,
-  onNext,
-  onResetReplay,
-  onResetCanvas,
-  isFinalLevel
-}) {
-  const [code, setCode] = useState(
-    starterCode
-  )
-
-  useEffect(() => {
-    setCode(starterCode)
-  }, [starterCode, lesson.id])
-
-  const activeCheck = useMemo(() => {
-    if (check) return check
-
-    return validateLesson(
-      lesson,
-      [],
-      code
-    )
-  }, [check, lesson, code])
-
-  const hasCodeStarted = String(code || '').trim().length > 0
-
-  return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        flex: 1,
-        minHeight: 0,
-        overflow: 'hidden'
-      }}
-    >
-      <div
-        data-testid="free-code-scroll"
-        style={{
-          flex: 1,
-          minHeight: 0,
-          overflowY: 'auto',
-          display: 'flex',
-          flexDirection: 'column'
-        }}
-      >
-      {/* BRIEFING */}
-      <div
-        style={{
-          flexShrink: 0,
-          padding: '11px 14px 9px',
-          borderBottom: `1px solid ${C.onyx100}`,
-          background: C.onyx50
-        }}
-      >
-        <div
-          style={{
-            fontSize: 10,
-            fontWeight: 800,
-            color: C.purple,
-            textTransform: 'uppercase',
-            letterSpacing: '.06em',
-            marginBottom: 4
-          }}
-        >
-          Lesson briefing
-        </div>
-
-        <div
-          style={{
-            fontSize: 12,
-            color: C.onyx600,
-            lineHeight: 1.6
-          }}
-        >
-          {lessonSummary(lesson)}
-        </div>
-
-        {lesson.concepts
-          ?.slice(0, 2)
-          .filter(Boolean)
-          .map((concept, index) => (
             <div
-              key={index}
               style={{
-                marginTop: 6,
-                fontSize: 11,
-                color: C.onyx500,
+                fontSize: 11.5,
+                color: C.onyx600,
                 lineHeight: 1.5
               }}
             >
-              {concept.note ||
-                concept.code_snippet}
+              This line is part of the Java solution for this lesson.
             </div>
-          ))}
-
-        <button
-          type="button"
-          onClick={() => {
-            setCode(starterCode)
-            onResetReplay()
-          }}
-          style={{
-            marginTop: 8,
-            background: 'transparent',
-            color: C.purple,
-            border: `1px solid ${C.purple}`,
-            borderRadius: 7,
-            padding: '6px 9px',
-            fontSize: 11,
-            fontWeight: 700,
-            cursor: 'pointer'
-          }}
-        >
-          Reset &amp; Replay Guided Mode
-        </button>
+          </div>
+        ))}
       </div>
+    )
+  }
 
-      {/* CODE EDITOR */}
-      <div
-        style={{
-          flex: '0 0 320px',
-          minHeight: 320,
-          overflow: 'hidden',
-          display: 'flex',
-          flexDirection: 'column',
-          padding: '12px 12px 0'
-        }}
-      >
+  function LessonLineBreakdown({ lesson, code }) {
+    const breakdown = normalizeLineBreakdown(lesson)
+
+    if (breakdown.length === 0) {
+      return <GenericCodeBreakdown code={code} />
+    }
+
+    return (
+      <div style={{ marginTop: 14 }}>
         <div
           style={{
-            fontSize: 11,
-            fontWeight: 700,
+            fontSize: 10,
             color: C.onyx400,
-            textTransform: 'uppercase',
-            letterSpacing: '.04em',
-            marginBottom: 6
-          }}
-        >
-          Your Code
-        </div>
-
-        <div
-          data-testid="free-code-editor"
-          style={{
-            flex: '1 1 0',
-            minHeight: 0,
-            borderRadius: 10,
-            overflow: 'hidden',
-            border: `1px solid ${C.onyx100}`
-          }}
-        >
-          <CodeEditor
-            value={code}
-            onChange={setCode}
-            fillHeight
-          />
-        </div>
-      </div>
-
-      {/* ACTIONS */}
-      <div
-        style={{
-          flexShrink: 0,
-          padding: '10px 12px',
-          display: 'flex',
-          gap: 7,
-          borderTop: `1px solid ${C.onyx100}`
-        }}
-      >
-        <button
-          type="button"
-          onClick={() => onRun(code)}
-          disabled={disabled}
-          style={{
-            flex: 1,
-            background: C.purple,
-            color: '#fff',
-            border: 'none',
-            borderRadius: 9,
-            padding: '10px',
-            fontSize: 13,
             fontWeight: 700,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 6,
-            boxShadow:
-              '0 4px 12px rgba(79,70,229,.3)',
-            cursor: disabled ? 'not-allowed' : 'pointer',
-            opacity: disabled ? 0.5 : 1
+            letterSpacing: '.05em',
+            marginBottom: 8
           }}
         >
-          <Ico
-            n="play"
-            s={14}
-            c="#fff"
-          />
-
-          Run
-        </button>
-
-        <button
-          type="button"
-          onClick={() => {
-            setCode(starterCode)
-            onResetCanvas()
-          }}
-          style={{
-            background: '#fff',
-            color: C.onyx600,
-            border: `1px solid ${C.onyx100}`,
-            borderRadius: 9,
-            padding: '10px 12px',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 5,
-            fontSize: 13,
-            fontWeight: 600
-          }}
-        >
-          <Ico
-            n="refresh"
-            s={14}
-            c={C.onyx600}
-          />
-        </button>
-
-        <button
-          type="button"
-          onClick={onHint}
-          style={{
-            background: hint
-              ? C.amberLight
-              : '#fff',
-            color: C.amberDark,
-            border: `1px solid ${
-              hint
-                ? C.amber + '66'
-                : C.onyx100
-            }`,
-            borderRadius: 9,
-            padding: '10px 12px',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 5,
-            fontSize: 13,
-            fontWeight: 600
-          }}
-        >
-          <Ico
-            n="tip"
-            s={14}
-            c={C.amberDark}
-          />
-        </button>
-      </div>
-
-      {/* HINT */}
-      {hint && (
-        <div
-          style={{
-            flexShrink: 0,
-            background: C.amberLight,
-            color: C.amberDark,
-            fontSize: 12.5,
-            padding: '9px 14px',
-            lineHeight: 1.6,
-            borderTop: `1px solid ${C.amber}44`
-          }}
-        >
-          💡{' '}
-          {lesson.hint ||
-            'No extra hint available for this level.'}
-        </div>
-      )}
-
-      {/* CHECKLIST */}
-      <div
-        style={{
-          flexShrink: 0,
-          padding: '12px 14px',
-          borderTop: `1px solid ${C.onyx100}`,
-          opacity: hasCodeStarted ? 1 : 0,
-          maxHeight: hasCodeStarted ? 240 : 0,
-          overflow: 'hidden',
-          pointerEvents: hasCodeStarted ? 'auto' : 'none',
-          transition: 'opacity .2s ease, max-height .2s ease'
-        }}
-      >
-        <div
-          style={{
-            fontSize: 11,
-            fontWeight: 700,
-            color: C.onyx400,
-            textTransform: 'uppercase',
-            letterSpacing: '.04em',
-            marginBottom: 9
-          }}
-        >
-          Quest Checklist
+          LINE BREAKDOWN
         </div>
 
         <div
           style={{
             display: 'flex',
             flexDirection: 'column',
-            gap: 6
+            gap: 7
           }}
         >
-          {activeCheck.items.map(
-            (item, i) => (
+          {breakdown.map((item, index) => (
+            <div
+              key={`${item.part}-${index}`}
+              style={{
+                padding: '9px 10px',
+                background: '#F8FAFC',
+                border: `1px solid ${C.onyx100}`,
+                borderRadius: 9
+              }}
+            >
               <div
-                key={i}
                 style={{
                   display: 'flex',
-                  alignItems: 'center',
+                  alignItems: 'flex-start',
                   gap: 8
                 }}
               >
                 <div
                   style={{
-                    width: 16,
-                    height: 16,
-                    borderRadius: '50%',
-                    flexShrink: 0,
-                    background: item.ok
-                      ? C.emerald
-                      : C.onyx100,
+                    width: 20,
+                    height: 20,
+                    minWidth: 20,
+                    borderRadius: 6,
+                    background: C.purpleLight,
+                    color: C.purple,
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'center'
+                    justifyContent: 'center',
+                    fontSize: 10,
+                    fontWeight: 800
                   }}
                 >
-                  {item.ok && (
-                    <Ico
-                      n="check"
-                      s={10}
-                      c="#fff"
-                    />
-                  )}
+                  {index + 1}
                 </div>
 
-                <span
-                  style={{
-                    fontSize: 12,
-                    color: item.ok
-                      ? C.onyx
-                      : C.onyx400,
-                    fontWeight: item.ok
-                      ? 600
-                      : 500
-                  }}
-                >
-                  {item.label}
-                </span>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div
+                    style={{
+                      fontFamily: "'JetBrains Mono',monospace",
+                      fontSize: 11.5,
+                      fontWeight: 700,
+                      color: C.onyx,
+                      lineHeight: 1.45,
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word'
+                    }}
+                  >
+                    {item.part}
+                  </div>
+
+                  <div
+                    style={{
+                      marginTop: 3,
+                      fontSize: 11.5,
+                      color: C.onyx600,
+                      lineHeight: 1.55
+                    }}
+                  >
+                    {item.explanation}
+                  </div>
+                </div>
               </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  function CompletionReview({ lesson, code }) {
+    const selectedCode =
+      String(code || '').trim() ||
+      '// No code was captured for this completion.'
+
+    return (
+      <div style={{ marginTop: 14 }}>
+        <LessonBriefing lesson={lesson} />
+
+        <div
+          style={{
+            marginTop: 12,
+            background: '#0B1220',
+            borderRadius: 9,
+            padding: '10px 11px',
+            maxHeight: 142,
+            overflowY: 'auto'
+          }}
+        >
+          <div
+            style={{
+              fontSize: 10,
+              color: '#94A3B8',
+              fontFamily: "'JetBrains Mono',monospace",
+              marginBottom: 6,
+              letterSpacing: '.06em'
+            }}
+          >
+            SELECTED ANSWERS / CODE
+          </div>
+
+          <pre
+            style={{
+              margin: 0,
+              whiteSpace: 'pre-wrap',
+              fontFamily: "'JetBrains Mono',monospace",
+              fontSize: 12,
+              color: '#86EFAC',
+              lineHeight: '20px'
+            }}
+          >
+            {selectedCode}
+          </pre>
+        </div>
+
+        <LessonLineBreakdown
+          lesson={lesson}
+          code={selectedCode}
+        />
+      </div>
+    )
+  }
+
+  function validateLesson(lesson, events = [], code = '') {
+    if (!lesson) {
+      return {
+        passed: false,
+        items: []
+      }
+    }
+
+    const items = []
+    const hasCode = String(code || '').trim().length > 0
+
+    const shouldHideExactSolutionHint =
+      String(lesson.required_code_label || '')
+        .toLowerCase()
+        .startsWith('use the exact solution:')
+
+    if (lesson.required_code_pattern && !shouldHideExactSolutionHint) {
+      let patternMatches = false
+
+      try {
+        patternMatches = new RegExp(
+          lesson.required_code_pattern,
+          'm'
+        ).test(code)
+      } catch (_) {}
+
+      items.push({
+        label:
+          lesson.required_code_label ||
+          'Use required code pattern',
+        ok: patternMatches
+      })
+    }
+
+    if (lesson.solution_code && hasCode) {
+      const normalize = value =>
+        String(value || '')
+          .replace(/\s+/g, ' ')
+          .trim()
+
+      items.push({
+        label: 'Match the lesson solution',
+        ok:
+          normalize(code) ===
+          normalize(lesson.solution_code)
+      })
+    }
+
+    if (items.length === 0) {
+      items.push({
+        label: 'Complete the Java solution',
+        ok: hasCode
+      })
+    }
+
+    return {
+      passed:
+        items.length > 0 &&
+        items.every(item => item.ok),
+      items
+    }
+  }
+
+  /* =========================================================
+    GUIDED PANEL
+    ========================================================= */
+
+  function GuidedPanel({
+    lesson,
+    disabled = false,
+    onUnlock,
+    onNext,
+    onStepCorrect,
+    onWrongAnswer,
+    onAllStepsDone,
+    taskComplete,
+    levelAlreadyCleared,
+    completedCode,
+    isFinalLevel,
+  lives,
+  maxLives = 3
+}) {
+    const [stepIdx, setStepIdx] = useState(0)
+    const [chosen, setChosen] = useState(null)
+    const [built, setBuilt] = useState([])
+    const [shakeKey, setShakeKey] = useState(0)
+    const [allDone, setAllDone] = useState(false)
+
+    const builtRef = useRef([])
+
+    const guidedSteps = Array.isArray(lesson.guided)
+      ? lesson.guided
+      : []
+
+    /* Reset the Guided Panel whenever the lesson changes */
+    useEffect(() => {
+      setStepIdx(0)
+      setChosen(null)
+      setBuilt([])
+      setShakeKey(0)
+      setAllDone(false)
+
+      builtRef.current = []
+    }, [lesson.id])
+
+    const step = guidedSteps[stepIdx]
+
+    const stepPrompt = String(
+      step?.prompt ||
+      step?.question ||
+      ''
+    ).trim()
+
+    const stepBriefing = String(
+      step?.briefing ||
+      lesson?.briefing ||
+      ''
+    ).trim()
+
+    const options = useMemo(() => {
+      if (!step) return []
+
+      if (
+        Array.isArray(step.options) &&
+        step.options.length > 0
+      ) {
+        return shuffle(
+          step.options.filter(
+            value =>
+              value !== null &&
+              value !== undefined &&
+              String(value).trim() !== ''
+          )
+        )
+      }
+
+      const dbChoices = [
+        step.correct_snippet,
+        step.correct_answer,
+        step.distractor_1,
+        step.distractor_2,
+        step.distractor_3
+      ].filter(
+        value =>
+          value !== null &&
+          value !== undefined &&
+          String(value).trim() !== ''
+      )
+
+      return shuffle(dbChoices)
+    }, [stepIdx, lesson.id, step])
+
+    /* =========================================================
+      ANSWER PICKER
+      ========================================================= */
+
+    const pick = useCallback(
+      opt => {
+        /*
+        * Prevent multiple clicks while the current
+        * answer animation is running.
+        */
+        if (chosen || disabled) return
+
+        if (!step) return
+
+        const correctTarget =
+          step.correct_snippet ??
+          step.correct_answer
+
+        const selected = String(opt ?? '')
+        const correct = String(correctTarget ?? '')
+
+        /* -------------------------
+          CORRECT ANSWER
+          ------------------------- */
+        if (selected === correct) {
+          const newBuilt = [
+            ...builtRef.current,
+            selected
+          ]
+
+          builtRef.current = newBuilt
+
+          setChosen({
+            text: selected,
+            correct: true
+          })
+
+          const isFinalStep =
+            stepIdx + 1 >= guidedSteps.length
+
+          if (onStepCorrect) {
+            onStepCorrect(
+              selected,
+              newBuilt.join('\n'),
+              isFinalStep
             )
+          }
+
+          setTimeout(() => {
+            setBuilt([...newBuilt])
+            setChosen(null)
+
+            if (isFinalStep) {
+              setAllDone(true)
+
+              onAllStepsDone?.(
+                newBuilt.join('\n')
+              )
+            } else {
+              setStepIdx(current => current + 1)
+            }
+          }, 550)
+
+          return
+        }
+
+        /* -------------------------
+          WRONG ANSWER
+          ------------------------- */
+
+        setChosen({
+          text: selected,
+          correct: false
+        })
+
+        setShakeKey(key => key + 1)
+
+        /*
+        * Tell LessonPage that the player
+        * made another wrong answer.
+        */
+        onWrongAnswer?.()
+
+        setTimeout(() => {
+          setChosen(null)
+        }, 650)
+      },
+      [
+        chosen,
+        step,
+        stepIdx,
+        guidedSteps.length,
+        onStepCorrect,
+        onWrongAnswer,
+        onAllStepsDone,
+        disabled
+      ]
+    )
+
+    const progress = allDone
+      ? guidedSteps.length
+      : stepIdx
+
+    const pct =
+      guidedSteps.length > 0
+        ? (progress / guidedSteps.length) * 100
+        : 0
+
+    return (
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          flex: 1,
+          minHeight: 0,
+          overflow: 'hidden'
+        }}
+      >
+        {/* PROGRESS HEADER */}
+        <div
+          className="lesson-guided__header"
+          style={{
+            padding: '14px 16px 10px',
+            borderBottom: `1px solid ${C.onyx100}`,
+            flexShrink: 0
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              marginBottom: 6
+            }}
+          >
+            <span
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                color: C.purple,
+                textTransform: 'uppercase',
+                letterSpacing: '.06em'
+              }}
+            >
+              Guided Mode
+            </span>
+
+            <span
+              style={{
+                fontSize: 11,
+                color: C.onyx400,
+                fontWeight: 500
+              }}
+            >
+              {progress} / {guidedSteps.length}
+            </span>
+          </div>
+
+          <div
+            style={{
+              height: 5,
+              background: C.onyx100,
+              borderRadius: 999,
+              overflow: 'hidden'
+            }}
+          >
+            <div
+              style={{
+                height: '100%',
+                width: `${pct}%`,
+                background: `linear-gradient(90deg,${C.purple},${C.emerald})`,
+                borderRadius: 999,
+                transition: 'width .4s ease'
+              }}
+            />
+          </div>
+
+          {!levelAlreadyCleared && (
+            <div className="lesson-lives">
+              <span className="lesson-lives-label">
+                LIVES
+              </span>
+
+              <div className="lesson-hearts">
+                  {Array.from({ length: maxLives }, (_, index) => index).map(index => (
+                  <span
+                    key={index}
+                    className={
+                      index < lives
+                        ? 'life-heart active'
+                        : 'life-heart lost'
+                    }
+                  >
+                    ♥
+                  </span>
+                ))}
+              </div>
+            </div>
           )}
 
-          {activeCheck.passed && (
+        </div>
+
+        {/* CONTENT */}
+        <div
+          className="lesson-guided__content"
+          style={{
+            flex: 1,
+            overflowY: 'auto',
+            padding: '12px 14px'
+          }}
+        >
+          {guidedSteps.length === 0 && (
+            <div
+              style={{
+                fontSize: 13,
+                color: C.onyx500,
+                textAlign: 'center',
+                marginTop: 20,
+                lineHeight: 1.5
+              }}
+            >
+              No guided steps found for this lesson.
+              You can proceed directly to Free Code mode
+              below.
+            </div>
+          )}
+
+          {!allDone && step && (
             <>
+              {/* BRIEFING */}
+              {stepBriefing && (
+                <div
+                  className="lesson-guided__briefing"
+                  style={{
+                    marginBottom: 12,
+                    background: '#F4F1FF',
+                    border: `1px solid ${C.purpleLight}`,
+                    borderRadius: 12,
+                    padding: '10px 12px'
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 10,
+                      color: C.purple,
+                      fontWeight: 700,
+                      letterSpacing: '.06em',
+                      textTransform: 'uppercase',
+                      marginBottom: 6
+                    }}
+                  >
+                    Level Briefing
+                  </div>
+
+                  <div
+                    style={{
+                      fontSize: 12.5,
+                      color: C.onyx700,
+                      lineHeight: 1.6,
+                      whiteSpace: 'pre-wrap'
+                    }}
+                  >
+                    {stepBriefing}
+                  </div>
+                </div>
+              )}
+
+              {/* QUESTION */}
               <div
+                className="lesson-guided__prompt"
                 style={{
-                  marginTop: 8,
-                  background: C.emeraldLight,
-                  color: C.emeraldDark,
-                  borderRadius: 9,
-                  padding: '9px 12px',
-                  fontSize: 12.5,
+                  fontSize: 13,
+                  color: C.onyx700,
                   fontWeight: 600,
+                  lineHeight: 1.6,
+                  marginBottom: 12,
+                  background: C.purpleLight,
+                  borderRadius: 10,
+                  padding: '10px 12px'
+                }}
+              >
+                <b>
+                  Step {stepIdx + 1} —{' '}
+                </b>
+
+                {stepPrompt}
+              </div>
+
+              {/* ANSWERS */}
+              <div
+                className="lesson-guided__answers"
+                key={`${lesson.id}-${stepIdx}-${shakeKey}`}
+                style={{
                   display: 'flex',
-                  alignItems: 'center',
+                  flexDirection: 'column',
                   gap: 7
                 }}
               >
+                {options.length === 0 ? (
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: C.onyx400
+                    }}
+                  >
+                    No options available for this step.
+                  </div>
+                ) : (
+                  options.map((opt, i) => {
+                    const isChosen =
+                      chosen &&
+                      String(chosen.text) ===
+                        String(opt)
+
+                    const isCorrect =
+                      isChosen &&
+                      chosen.correct
+
+                    const isWrong =
+                      isChosen &&
+                      !chosen.correct
+
+                    return (
+                      <button
+                        key={`${String(opt)}-${i}`}
+                        type="button"
+                        disabled={!!chosen || disabled}
+                        onClick={() => pick(opt)}
+                        className={`lesson-guided__answer${isWrong ? ' shake' : ''}`}
+                        style={{
+                          background: isCorrect
+                            ? C.emeraldLight
+                            : isWrong
+                              ? '#FEECEC'
+                              : '#fff',
+
+                          border: `1.5px solid ${
+                            isCorrect
+                              ? C.emerald
+                              : isWrong
+                                ? '#EF4444'
+                                : C.onyx100
+                          }`,
+
+                          borderRadius: 10,
+                          padding: '10px 12px',
+                          textAlign: 'left',
+
+                          fontFamily:
+                            "'JetBrains Mono',monospace",
+
+                          fontSize: 12.5,
+
+                          color: isCorrect
+                            ? C.emeraldDark
+                            : isWrong
+                              ? '#EF4444'
+                              : C.onyx700,
+
+                          fontWeight: 500,
+
+                          cursor: chosen || disabled
+                            ? 'default'
+                            : 'pointer',
+
+                          transition: 'all .12s',
+                          lineHeight: 1.5,
+                          width: '100%',
+                          whiteSpace: 'pre-wrap',
+
+                          /*
+                          * Makes sure the button remains
+                          * above accidental overlapping
+                          * canvas elements.
+                          */
+                          position: 'relative',
+                          zIndex: 2,
+
+                          pointerEvents: chosen || disabled
+                            ? 'none'
+                            : 'auto'
+                        }}
+                      >
+                        {opt}
+                      </button>
+                    )
+                  })
+                )}
+              </div>
+            </>
+          )}
+
+          {/* COMPLETED GUIDED MODE */}
+          {allDone && (
+            <>
+              <div
+                className="toast-pop"
+                style={{
+                  background: C.emeraldLight,
+                  color: C.emeraldDark,
+                  borderRadius: 12,
+                  padding: '12px 14px',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  marginBottom: 12
+                }}
+              >
                 <Ico
-                  n="trophy"
-                  s={14}
+                  n="check"
+                  s={15}
                   c={C.emeraldDark}
                 />
 
-                Quest cleared!
+                All steps done!
               </div>
 
-              {completed && (
+              {taskComplete && (
                 <CompletionReview
                   lesson={lesson}
-                  code={completedCode}
+                  code={
+                    completedCode ||
+                    built.join('\n')
+                  }
                 />
               )}
             </>
           )}
         </div>
-      </div>
 
-</div>{/* end free-code-scroll */}
-      {/* NEXT */}
-      <div
-        style={{
-          flexShrink: 0,
-          padding: '12px 14px',
-          borderTop: `1px solid ${C.onyx100}`
-        }}
-      >
-        {!completed && (
+        {/* SELECTED CODE */}
+        {!taskComplete && (
           <div
+            className={`lesson-guided__selected-code${built.length === 0 ? ' lesson-guided__selected-code--empty' : ''}`}
             style={{
-              marginBottom: 8,
-              fontSize: 11,
-              color: C.onyx400,
-              textAlign: 'center'
+              flexShrink: 0,
+              background: '#0B1220',
+              borderTop: '1px solid #1E293B',
+              padding: '10px 14px',
+              maxHeight: 120,
+              overflowY: 'auto'
             }}
           >
-            Complete the level to continue.
+            <div
+              style={{
+                fontSize: 10,
+                color: '#475569',
+                fontFamily:
+                  "'JetBrains Mono',monospace",
+                marginBottom: 4,
+                letterSpacing: '.06em'
+              }}
+            >
+              SELECTED ANSWERS / CODE
+            </div>
+
+            {built.map((line, i) => (
+              <div
+                key={i}
+                className="slide-up"
+                style={{
+                  fontFamily:
+                    "'JetBrains Mono',monospace",
+                  fontSize: 12,
+                  color: '#86EFAC',
+                  lineHeight: '20px'
+                }}
+              >
+                {line}
+              </div>
+            ))}
+
+            {!allDone &&
+              guidedSteps.length > 0 && (
+                <div
+                  style={{
+                    fontFamily:
+                      "'JetBrains Mono',monospace",
+                    fontSize: 12,
+                    color: '#334155'
+                  }}
+                >
+                  █
+                </div>
+              )}
           </div>
         )}
 
-        <NextLevelButton
-          onNext={onNext}
-          isFinalLevel={isFinalLevel}
-          isCleared={completed || activeCheck.passed}
-          completed={completed}
-        />
+        {/* BOTTOM BUTTONS */}
+        <div
+          className="lesson-guided__footer"
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 7,
+            padding: '10px 12px',
+            flexShrink: 0,
+            borderTop: `1px solid ${C.onyx100}`
+          }}
+        >
+          {(allDone ||
+            taskComplete ||
+            guidedSteps.length === 0) && (
+            <button
+              type="button"
+              onClick={() =>
+                onUnlock(
+                  builtRef.current.join('\n')
+                )
+              }
+              className="toast-pop"
+              style={{
+                width: '100%',
+                background: C.purple,
+                color: '#fff',
+                border: 'none',
+                padding: '12px 10px',
+                fontSize: 13,
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                cursor: 'pointer',
+                borderRadius: 10
+              }}
+            >
+              <Ico
+                n="unlock"
+                s={15}
+                c="#fff"
+              />
+
+              Continue to Free Code
+            </button>
+          )}
+
+          {!taskComplete && !allDone && (
+            <div
+              className="lesson-guided__footer-note"
+              style={{
+                marginBottom: 8,
+                fontSize: 11,
+                color: C.onyx400,
+                textAlign: 'center'
+              }}
+            >
+              Select the correct code step above
+              to complete the level.
+            </div>
+          )}
+
+          <NextLevelButton
+            onNext={onNext}
+            isFinalLevel={isFinalLevel}
+            isCleared={taskComplete || allDone}
+            completed={taskComplete}
+          />
+        </div>
       </div>
-    </div>
-  )
-}
-
-/* =========================================================
-   LESSON PAGE
-   ========================================================= */
-
-export default function LessonPage() {
-  const { id } = useParams()
-  const navigate = useNavigate()
-  const location = useLocation()
-
-  const searchParams = new URLSearchParams(
-    location.search
-  )
-
-  const activeIslandId = Number(
-    location.state?.islandId ||
-      searchParams.get('island') ||
-      window.localStorage.getItem(
-        'activeIslandId'
-      ) ||
-      1
-  )
-
-  const relativeLevel = Number(
-    location.state?.relativeLevel || id
-  )
-
-  const initialPipPosition =
-    LEVEL_START_POSITIONS[relativeLevel] ?? null
-
-  const { user, updateXp } = useAuth()
-
-  const [lesson, setLesson] = useState(null)
-  const [phase, setPhase] = useState('guided')
-
-  const [starterCode, setStarterCode] =
-    useState('')
-
-  const [playToken, setPlayToken] =
-    useState(0)
-
-  const [introToken, setIntroToken] =
-    useState(0)
-
-  const [isIntroCutscene, setIsIntroCutscene] =
-    useState(false)
-
-  const [hasPlayedIntro, setHasPlayedIntro] =
-    useState(false)
-
-  const [liveCode, setLiveCode] =
-    useState('')
-
-  const [check, setCheck] =
-    useState(null)
-
-  const [hint, setHint] =
-    useState(false)
-
-  const [toast, setToast] =
-    useState(null)
-
-  const [musicOn, setMusicOn] =
-    useState(false)
-
-  const [musicSliderOpen, setMusicSliderOpen] =
-    useState(false)
-
-  const [musicVolume, setMusicVolume] =
-    useState(0.35)
-
-  const [panelOpen, setPanelOpen] =
-    useState(true)
-
-  const [completed, setCompleted] =
-    useState(false)
-
-  const [levelAlreadyCleared, setLevelAlreadyCleared] =
-    useState(false)
-
-  const [completedCode, setCompletedCode] =
-    useState('')
-
-  const [islandCleared, setIslandCleared] =
-    useState(false)
-
-  const [completionCertificate, setCompletionCertificate] =
-    useState(null)
-
-  const [completionSaveError, setCompletionSaveError] =
-    useState('')
-
-  const [xpGained, setXpGained] =
-    useState(0)
-
-  const [nextLesson, setNextLesson] =
-    useState(null)
-
-  const [canvasResetToken, setCanvasResetToken] =
-    useState(0)
-
-  const [replayToken, setReplayToken] =
-    useState(0)
-
-  /* NEW: wrong-answer/death state */
-const MAX_LIVES = 3
-
-const [wrongAnswers, setWrongAnswers] = useState(() =>
-  MAX_LIVES - getIslandLives(activeIslandId, MAX_LIVES)
-)
-const [isDying, setIsDying] = useState(false)
-const [showGameOver, setShowGameOver] = useState(false)
-const [isRestarting, setIsRestarting] = useState(false)
-const [restartError, setRestartError] = useState('')
-const lives = Math.max(0, MAX_LIVES - wrongAnswers)
-const [deathPosition, setDeathPosition] = useState(null)
-const [lightningToken, setLightningToken] = useState(0)
-const [guidedResetKey, setGuidedResetKey] = useState(0)
-  const completionPromiseRef = useRef(null)
-const guidedCodeRef = useRef('')
-const guidedEventsRef = useRef([])
-const guidedFinalStepRef = useRef(false)
-
-const deathResolveRef = useRef(null)
-
-  const PANEL_W = 340
+    )
+  }
 
   /* =========================================================
-     SAVE PROGRESS
-     ========================================================= */
+    FREE CODE PANEL
+    ========================================================= */
 
-  const saveProgress = useCallback(() => {
-    if (!lesson) {
-      return Promise.resolve()
-    }
+  function FreeCodePanel({
+    lesson,
+    disabled = false,
+    starterCode,
+    check,
+    onRun,
+    hint,
+    onHint,
+    completed,
+    completedCode,
+    onNext,
+    onResetReplay,
+    onResetCanvas,
+    isFinalLevel
+  }) {
+    const [code, setCode] = useState(
+      starterCode
+    )
 
-    if (completionPromiseRef.current) {
-      return completionPromiseRef.current
-    }
+    useEffect(() => {
+      setCode(starterCode)
+    }, [starterCode, lesson.id])
 
-    const request = axios
-      .post('/api/progress/complete', {
-        lesson_id: Number(lesson.id)
-      })
-      .then(res => {
-        setCompletionSaveError('')
-        setCompleted(true)
-        setLevelAlreadyCleared(true)
+    const activeCheck = useMemo(() => {
+      if (check) return check
 
-        if (res.data.certificate) {
-          setCompletionCertificate(res.data.certificate)
-          setIslandCleared(true)
-        }
+      return validateLesson(
+        lesson,
+        [],
+        code
+      )
+    }, [check, lesson, code])
 
-        markLessonCompleted(
-          lesson.id,
-          user?.id
-        )
+    const hasCodeStarted = String(code || '').trim().length > 0
 
-        const xpAwarded = Number(res.data.xpAwarded) || 0
-        setXpGained(xpAwarded)
+    return (
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          flex: 1,
+          minHeight: 0,
+          overflow: 'hidden'
+        }}
+      >
+        <div
+          data-testid="free-code-scroll"
+          style={{
+            flex: 1,
+            minHeight: 0,
+            overflowY: 'auto',
+            display: 'flex',
+            flexDirection: 'column'
+          }}
+        >
+        {/* BRIEFING */}
+        <div
+          style={{
+            flexShrink: 0,
+            padding: '11px 14px 9px',
+            borderBottom: `1px solid ${C.onyx100}`,
+            background: C.onyx50
+          }}
+        >
+          <div
+            style={{
+              fontSize: 10,
+              fontWeight: 800,
+              color: C.purple,
+              textTransform: 'uppercase',
+              letterSpacing: '.06em',
+              marginBottom: 4
+            }}
+          >
+            Lesson briefing
+          </div>
 
-        if (xpAwarded > 0) {
-          updateXp(
-            res.data.newXp,
-            res.data.newLevel,
-            res.data.unlocked_module
+          <div
+            style={{
+              fontSize: 12,
+              color: C.onyx600,
+              lineHeight: 1.6
+            }}
+          >
+            {lessonSummary(lesson)}
+          </div>
+
+          {lesson.concepts
+            ?.slice(0, 2)
+            .filter(Boolean)
+            .map((concept, index) => (
+              <div
+                key={index}
+                style={{
+                  marginTop: 6,
+                  fontSize: 11,
+                  color: C.onyx500,
+                  lineHeight: 1.5
+                }}
+              >
+                {concept.note ||
+                  concept.code_snippet}
+              </div>
+            ))}
+
+          <button
+            type="button"
+            onClick={() => {
+              setCode(starterCode)
+              onResetReplay()
+            }}
+            style={{
+              marginTop: 8,
+              background: 'transparent',
+              color: C.purple,
+              border: `1px solid ${C.purple}`,
+              borderRadius: 7,
+              padding: '6px 9px',
+              fontSize: 11,
+              fontWeight: 700,
+              cursor: 'pointer'
+            }}
+          >
+            Reset &amp; Replay Guided Mode
+          </button>
+        </div>
+
+        {/* CODE EDITOR */}
+        <div
+          style={{
+            flex: '0 0 320px',
+            minHeight: 320,
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+            padding: '12px 12px 0'
+          }}
+        >
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 700,
+              color: C.onyx400,
+              textTransform: 'uppercase',
+              letterSpacing: '.04em',
+              marginBottom: 6
+            }}
+          >
+            Your Code
+          </div>
+
+          <div
+            data-testid="free-code-editor"
+            style={{
+              flex: '1 1 0',
+              minHeight: 0,
+              borderRadius: 10,
+              overflow: 'hidden',
+              border: `1px solid ${C.onyx100}`
+            }}
+          >
+            <CodeEditor
+              value={code}
+              onChange={setCode}
+              fillHeight
+            />
+          </div>
+        </div>
+
+        {/* ACTIONS */}
+        <div
+          style={{
+            flexShrink: 0,
+            padding: '10px 12px',
+            display: 'flex',
+            gap: 7,
+            borderTop: `1px solid ${C.onyx100}`
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => onRun(code)}
+            disabled={disabled}
+            style={{
+              flex: 1,
+              background: C.purple,
+              color: '#fff',
+              border: 'none',
+              borderRadius: 9,
+              padding: '10px',
+              fontSize: 13,
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 6,
+              boxShadow:
+                '0 4px 12px rgba(79,70,229,.3)',
+              cursor: disabled ? 'not-allowed' : 'pointer',
+              opacity: disabled ? 0.5 : 1
+            }}
+          >
+            <Ico
+              n="play"
+              s={14}
+              c="#fff"
+            />
+
+            Run
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setCode(starterCode)
+              onResetCanvas()
+            }}
+            style={{
+              background: '#fff',
+              color: C.onyx600,
+              border: `1px solid ${C.onyx100}`,
+              borderRadius: 9,
+              padding: '10px 12px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 5,
+              fontSize: 13,
+              fontWeight: 600
+            }}
+          >
+            <Ico
+              n="refresh"
+              s={14}
+              c={C.onyx600}
+            />
+          </button>
+
+          <button
+            type="button"
+            onClick={onHint}
+            style={{
+              background: hint
+                ? C.amberLight
+                : '#fff',
+              color: C.amberDark,
+              border: `1px solid ${
+                hint
+                  ? C.amber + '66'
+                  : C.onyx100
+              }`,
+              borderRadius: 9,
+              padding: '10px 12px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 5,
+              fontSize: 13,
+              fontWeight: 600
+            }}
+          >
+            <Ico
+              n="tip"
+              s={14}
+              c={C.amberDark}
+            />
+          </button>
+        </div>
+
+        {/* HINT */}
+        {hint && (
+          <div
+            style={{
+              flexShrink: 0,
+              background: C.amberLight,
+              color: C.amberDark,
+              fontSize: 12.5,
+              padding: '9px 14px',
+              lineHeight: 1.6,
+              borderTop: `1px solid ${C.amber}44`
+            }}
+          >
+            💡{' '}
+            {lesson.hint ||
+              'No extra hint available for this level.'}
+          </div>
+        )}
+
+        {/* CHECKLIST */}
+        <div
+          style={{
+            flexShrink: 0,
+            padding: '12px 14px',
+            borderTop: `1px solid ${C.onyx100}`,
+            opacity: hasCodeStarted ? 1 : 0,
+            maxHeight: hasCodeStarted ? 240 : 0,
+            overflow: 'hidden',
+            pointerEvents: hasCodeStarted ? 'auto' : 'none',
+            transition: 'opacity .2s ease, max-height .2s ease'
+          }}
+        >
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 700,
+              color: C.onyx400,
+              textTransform: 'uppercase',
+              letterSpacing: '.04em',
+              marginBottom: 9
+            }}
+          >
+            Quest Checklist
+          </div>
+
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 6
+            }}
+          >
+            {activeCheck.items.map(
+              (item, i) => (
+                <div
+                  key={i}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 16,
+                      height: 16,
+                      borderRadius: '50%',
+                      flexShrink: 0,
+                      background: item.ok
+                        ? C.emerald
+                        : C.onyx100,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}
+                  >
+                    {item.ok && (
+                      <Ico
+                        n="check"
+                        s={10}
+                        c="#fff"
+                      />
+                    )}
+                  </div>
+
+                  <span
+                    style={{
+                      fontSize: 12,
+                      color: item.ok
+                        ? C.onyx
+                        : C.onyx400,
+                      fontWeight: item.ok
+                        ? 600
+                        : 500
+                    }}
+                  >
+                    {item.label}
+                  </span>
+                </div>
+              )
+            )}
+
+            {activeCheck.passed && (
+              <>
+                <div
+                  style={{
+                    marginTop: 8,
+                    background: C.emeraldLight,
+                    color: C.emeraldDark,
+                    borderRadius: 9,
+                    padding: '9px 12px',
+                    fontSize: 12.5,
+                    fontWeight: 600,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 7
+                  }}
+                >
+                  <Ico
+                    n="trophy"
+                    s={14}
+                    c={C.emeraldDark}
+                  />
+
+                  Quest cleared!
+                </div>
+
+                {completed && (
+                  <CompletionReview
+                    lesson={lesson}
+                    code={completedCode}
+                  />
+                )}
+              </>
+            )}
+          </div>
+        </div>
+
+  </div>{/* end free-code-scroll */}
+        {/* NEXT */}
+        <div
+          style={{
+            flexShrink: 0,
+            padding: '12px 14px',
+            borderTop: `1px solid ${C.onyx100}`
+          }}
+        >
+          {!completed && (
+            <div
+              style={{
+                marginBottom: 8,
+                fontSize: 11,
+                color: C.onyx400,
+                textAlign: 'center'
+              }}
+            >
+              Complete the level to continue.
+            </div>
+          )}
+
+          <NextLevelButton
+            onNext={onNext}
+            isFinalLevel={isFinalLevel}
+            isCleared={completed || activeCheck.passed}
+            completed={completed}
+          />
+        </div>
+      </div>
+    )
+  }
+
+  /* =========================================================
+    LESSON PAGE
+    ========================================================= */
+
+  export default function LessonPage() {
+    const { id } = useParams()
+    const navigate = useNavigate()
+    const location = useLocation()
+
+    const searchParams = new URLSearchParams(
+      location.search
+    )
+
+    const activeIslandId = Number(
+      location.state?.islandId ||
+        searchParams.get('island') ||
+        window.localStorage.getItem(
+          'activeIslandId'
+        ) ||
+        1
+    )
+
+    const relativeLevel = Number(
+      location.state?.relativeLevel || id
+    )
+
+    const initialPipPosition =
+      LEVEL_START_POSITIONS[relativeLevel] ?? null
+
+    const { user, updateXp } = useAuth()
+
+    const [lesson, setLesson] = useState(null)
+    const [phase, setPhase] = useState('guided')
+
+    const [starterCode, setStarterCode] =
+      useState('')
+
+    const [playToken, setPlayToken] =
+      useState(0)
+
+    const [introToken, setIntroToken] =
+      useState(0)
+
+    const [isIntroCutscene, setIsIntroCutscene] =
+      useState(false)
+
+    const [showRecall, setShowRecall] = useState(false)
+
+    const [hasPlayedIntro, setHasPlayedIntro] =
+      useState(false)
+
+    const [liveCode, setLiveCode] =
+      useState('')
+
+    const [check, setCheck] =
+      useState(null)
+
+    const [hint, setHint] =
+      useState(false)
+
+    const [toast, setToast] =
+      useState(null)
+
+    const [musicOn, setMusicOn] =
+      useState(false)
+
+    const [musicSliderOpen, setMusicSliderOpen] =
+      useState(false)
+
+    const [musicVolume, setMusicVolume] =
+      useState(0.35)
+
+    const [panelOpen, setPanelOpen] =
+      useState(true)
+
+    const [completed, setCompleted] =
+      useState(false)
+
+    const [levelAlreadyCleared, setLevelAlreadyCleared] =
+      useState(false)
+
+    const [completedCode, setCompletedCode] =
+      useState('')
+
+    const [islandCleared, setIslandCleared] =
+      useState(false)
+
+    const [completionCertificate, setCompletionCertificate] =
+      useState(null)
+
+    const [completionSaveError, setCompletionSaveError] =
+      useState('')
+
+    const [xpGained, setXpGained] =
+      useState(0)
+
+    const [nextLesson, setNextLesson] =
+      useState(null)
+
+    const [canvasResetToken, setCanvasResetToken] =
+      useState(0)
+
+    const [replayToken, setReplayToken] =
+      useState(0)
+
+    /* NEW: wrong-answer/death state */
+    const MAX_LIVES = getIslandMaxLives(activeIslandId)
+
+  const [wrongAnswers, setWrongAnswers] = useState(() =>
+    MAX_LIVES - getIslandLives(activeIslandId, MAX_LIVES)
+  )
+  const [isDying, setIsDying] = useState(false)
+  const [showGameOver, setShowGameOver] = useState(false)
+  const [isRestarting, setIsRestarting] = useState(false)
+  const [restartError, setRestartError] = useState('')
+  const lives = Math.max(0, MAX_LIVES - wrongAnswers)
+  const [deathPosition, setDeathPosition] = useState(null)
+  const [lightningToken, setLightningToken] = useState(0)
+  const [guidedResetKey, setGuidedResetKey] = useState(0)
+    const completionPromiseRef = useRef(null)
+  const guidedCodeRef = useRef('')
+  const guidedEventsRef = useRef([])
+  const guidedFinalStepRef = useRef(false)
+
+  const deathResolveRef = useRef(null)
+
+    const PANEL_W = 340
+
+    /* =========================================================
+      SAVE PROGRESS
+      ========================================================= */
+
+    const saveProgress = useCallback(() => {
+      if (!lesson) {
+        return Promise.resolve()
+      }
+
+      if (completionPromiseRef.current) {
+        return completionPromiseRef.current
+      }
+
+      const request = axios
+        .post('/api/progress/complete', {
+          lesson_id: Number(lesson.id)
+        })
+        .then(res => {
+          setCompletionSaveError('')
+          setCompleted(true)
+          setLevelAlreadyCleared(true)
+
+          if (res.data.certificate) {
+            setCompletionCertificate(res.data.certificate)
+            setIslandCleared(true)
+          }
+
+          markLessonCompleted(
+            lesson.id,
+            user?.id
+          )
+
+          const xpAwarded = Number(res.data.xpAwarded) || 0
+          setXpGained(xpAwarded)
+
+          if (xpAwarded > 0) {
+            updateXp(
+              res.data.newXp,
+              res.data.newLevel,
+              res.data.unlocked_module
+            )
+
+            setToast({
+              msg: `+${xpAwarded} XP — quest cleared!`,
+              tone: 'emerald',
+              k: Date.now()
+            })
+
+            setTimeout(
+              () => setToast(null),
+              3000
+            )
+          }
+
+          return true
+        })
+        .catch(err => {
+          console.error(err)
+          setCompletionSaveError(
+            err.response?.data?.message ||
+            'Your completed level could not be saved. Retry to sync your progress and check certificate eligibility.'
           )
 
           setToast({
-            msg: `+${xpAwarded} XP — quest cleared!`,
-            tone: 'emerald',
+            msg:
+              'Level cleared locally. Progress will sync when you run it again.',
+            tone: 'amber',
+            k: Date.now()
+          })
+
+          setTimeout(
+            () => setToast(null),
+            3500
+          )
+
+          return false
+        })
+        .finally(() => {
+          if (
+            completionPromiseRef.current ===
+            request
+          ) {
+            completionPromiseRef.current =
+              null
+          }
+        })
+
+      completionPromiseRef.current = request
+
+      return request
+    }, [lesson, updateXp, user?.id])
+
+    /* =========================================================
+      LOAD LESSON
+      ========================================================= */
+
+    useEffect(() => {
+      completionPromiseRef.current = null
+
+      if (activeIslandId !== FINAL_ISLAND_ID) setLesson(null)   // Island 8 keeps the canvas mounted between levels
+      setIntroToken(0)
+      setIsIntroCutscene(false)
+      setHasPlayedIntro(false)
+      setCompleted(false)
+      setLevelAlreadyCleared(false)
+      setCompletedCode('')
+      setIslandCleared(false)
+      setCompletionCertificate(null)
+      setCompletionSaveError('')
+      setShowGameOver(false)
+      setXpGained(0)
+      setToast(null)
+      setNextLesson(null)
+
+      setPhase('guided')
+      setStarterCode('')
+      setLiveCode('')
+
+      setWrongAnswers(
+        MAX_LIVES -
+          getIslandLives(activeIslandId, MAX_LIVES)
+      )
+      setIsDying(false)
+      setDeathPosition(null)
+      setLightningToken(0)
+      setGuidedResetKey(0)
+
+      guidedCodeRef.current = ''
+      guidedEventsRef.current = []
+      guidedFinalStepRef.current = false
+
+      setCheck(null)
+
+      const applyLessonData = (
+        sourceLesson,
+        nextLessonData = null
+      ) => {
+        if (!sourceLesson) return
+
+        let guidedData =
+          sourceLesson.guided ??
+          sourceLesson.guidedSteps ??
+          sourceLesson.steps
+
+        if (typeof guidedData === 'string') {
+          try {
+            guidedData =
+              JSON.parse(guidedData)
+          } catch (_) {
+            guidedData = []
+          }
+        }
+
+        let conceptsData =
+          sourceLesson.concepts
+
+        if (typeof conceptsData === 'string') {
+          try {
+            conceptsData =
+              JSON.parse(conceptsData)
+          } catch (_) {
+            conceptsData = []
+          }
+        }
+
+        let lineBreakdownData =
+          sourceLesson.line_breakdown ??
+          sourceLesson.lineBreakdown ??
+          []
+
+        if (typeof lineBreakdownData === 'string') {
+          try {
+            lineBreakdownData =
+              JSON.parse(lineBreakdownData)
+          } catch (_) {
+            lineBreakdownData = []
+          }
+        }
+
+        setLesson({
+          ...sourceLesson,
+
+          moduleId:
+            sourceLesson.moduleId ??
+            sourceLesson.module_id ??
+            sourceLesson.islandId ??
+            activeIslandId,
+
+          guided: Array.isArray(guidedData)
+            ? guidedData
+            : [],
+
+          concepts: Array.isArray(conceptsData)
+            ? conceptsData
+            : [],
+
+          line_breakdown: Array.isArray(lineBreakdownData)
+            ? lineBreakdownData
+            : [],
+
+          initialCode:
+            sourceLesson.initialCode ??
+            sourceLesson.starter_code ??
+            '',
+
+          checklist: Array.isArray(
+            sourceLesson.checklist
+          )
+            ? sourceLesson.checklist
+            : []
+        })
+
+        setStarterCode(
+          sourceLesson.starter_code ||
+            sourceLesson.initialCode ||
+            FREE_CODE_PROMPT
+        )
+
+        setNextLesson(
+          nextLessonData || null
+        )
+      }
+
+      const fallbackLesson =
+        getLessonByIslandAndLevel(
+          activeIslandId,
+          relativeLevel
+        )
+
+      const loadLesson = async () => {
+        try {
+          const [
+            lessonResponse,
+            progressResponse
+          ] = await Promise.all([
+            axios.get('/api/lessons', {
+              params: {
+                island: activeIslandId,
+                level: relativeLevel
+              }
+            }),
+
+            axios.get('/api/progress')
+          ])
+
+          const fetchedLesson =
+            lessonResponse.data?.[0]
+
+          if (!fetchedLesson) {
+            throw new Error(
+              'Lesson not found for the selected island and level.'
+            )
+          }
+
+          const nextLessonResponse = await axios
+            .get(`/api/lessons/${fetchedLesson.id}/next`)
+            .catch(() => null)
+
+          const serverCompleted =
+            (progressResponse.data || [])
+              .some(item => {
+                const progressLessonId =
+                  Number(
+                    item.lesson_id ??
+                    item.activity_id
+                  )
+
+                return (
+                  progressLessonId ===
+                    Number(
+                      fetchedLesson.id
+                    ) &&
+                  (
+                    item.phase ===
+                      'completed' ||
+                    item.completed ===
+                      true ||
+                    item.is_completed ===
+                      true
+                  )
+                )
+              })
+
+          if (serverCompleted) {
+            setCompleted(true)
+            setLevelAlreadyCleared(true)
+            setPhase('free')
+          }
+
+          const localLesson =
+            getLessonByIslandAndLevel(
+              activeIslandId,
+              relativeLevel
+            )
+
+          applyLessonData({
+            ...fetchedLesson,
+
+            guided:
+              Array.isArray(
+                fetchedLesson.guided
+              ) &&
+              fetchedLesson.guided.length > 0
+                ? fetchedLesson.guided
+                : localLesson?.guided ||
+                  localLesson?.steps ||
+                  [],
+
+            briefing:
+              fetchedLesson.briefing ||
+              localLesson?.briefing,
+
+            starter_code:
+              fetchedLesson.starter_code ||
+              localLesson?.starter_code ||
+              localLesson?.initialCode ||
+              ''
+          }, nextLessonResponse?.data?.nextLesson || null)
+        } catch (error) {
+          if (error.response?.status === 403) {
+            setLesson(null)
+            navigate(`/island/${activeIslandId}`, { replace: true })
+            return
+          }
+
+          console.error(
+            'Lesson fetch failed. Falling back to local lesson data.',
+            error
+          )
+
+          if (fallbackLesson) {
+            applyLessonData({
+              ...fallbackLesson,
+
+              guided: Array.isArray(
+                fallbackLesson.guided
+              )
+                ? fallbackLesson.guided
+                : [],
+
+              concepts: Array.isArray(
+                fallbackLesson.concepts
+              )
+                ? fallbackLesson.concepts
+                : []
+            })
+
+            setCompleted(false)
+            setPhase('guided')
+            setNextLesson(null)
+
+            return
+          }
+
+          setLesson(null)
+        }
+      }
+
+      loadLesson()
+
+          if (activeIslandId !== FINAL_ISLAND_ID) {
+      startBgMusic()
+      setMusicOn(true)
+    }
+
+    return () => {
+      if (activeIslandId !== FINAL_ISLAND_ID) stopBgMusic()
+    }
+    }, [
+      id,
+      activeIslandId,
+      relativeLevel,
+      navigate
+    ])
+
+      // Island 8: music starts once and keeps playing across all 8 levels
+  useEffect(() => {
+    if (activeIslandId !== FINAL_ISLAND_ID) return undefined
+    startBgMusic()
+    setMusicOn(true)
+    return () => stopBgMusic()
+  }, [activeIslandId])
+
+    useEffect(() => {
+      if (wrongAnswers >= MAX_LIVES && !isDying) {
+        setShowGameOver(true)
+      }
+    }, [isDying, wrongAnswers])
+
+    useEffect(() => {
+      if (!lesson || hasPlayedIntro) return
+
+      const lessonNumber = Number(
+        lesson.order_index ||
+        lesson.level_label?.match(/\d+/)?.[0] ||
+        relativeLevel
+      )
+      const isLevelOne =
+        lessonNumber === 1 ||
+        lesson.title === "The Gate Golem's Riddle"
+
+      if (!isLevelOne) return
+      if (activeIslandId === FINAL_ISLAND_ID) { setShowRecall(true); return }
+
+      setHasPlayedIntro(true)
+      setIsIntroCutscene(true)
+      setIntroToken(token => token + 1)
+      }, [lesson, hasPlayedIntro, relativeLevel, activeIslandId])
+
+    /* =========================================================
+      PHASE CHANGE
+      ========================================================= */
+
+    const handlePhaseChange =
+      useCallback(
+        phaseName => {
+          if (isIntroCutscene) return
+
+          if (
+            phaseName === 'free' &&
+            !starterCode
+          ) {
+            setStarterCode(
+              FREE_CODE_PROMPT
+            )
+          }
+
+          setPhase(phaseName)
+        },
+        [isIntroCutscene, starterCode]
+      )
+
+    /* =========================================================
+      CORRECT GUIDED STEP
+      ========================================================= */
+
+    const handleStepCorrect =
+      useCallback(
+        (
+          snippet,
+          currentFullCode,
+          isFinalStep
+        ) => {
+          if (isIntroCutscene) return
+
+          const diagnostics =
+            lintJava(currentFullCode)
+
+          if (diagnostics.length > 0) {
+            setToast({
+              msg:
+                diagnostics[0].message,
+              tone: 'amber',
+              k: Date.now()
+            })
+
+            setTimeout(
+              () => setToast(null),
+              3000
+            )
+
+            return
+          }
+
+          guidedCodeRef.current =
+            currentFullCode
+
+          guidedFinalStepRef.current =
+            isFinalStep
+
+          setLiveCode(
+            currentFullCode
+          )
+
+          setPlayToken(
+            token => token + 1
+          )
+        },
+        [isIntroCutscene]
+      )
+
+    /* =========================================================
+      WRONG ANSWER
+      ========================================================= */
+
+    const triggerLightningDeath =
+      useCallback(() => {
+        setIsDying(true)
+
+        return new Promise(resolve => {
+          deathResolveRef.current = resolve
+        })
+      }, [])
+
+    const finishLightningDeath =
+      useCallback(() => {
+        setIsDying(false)
+        setShowGameOver(true)
+
+        const resolve = deathResolveRef.current
+
+        deathResolveRef.current = null
+
+        if (resolve) {
+          resolve()
+        }
+      }, [])
+
+    const resetIslandRun =
+      useCallback(async () => {
+        if (!lesson?.id || isRestarting) return
+
+        setIsRestarting(true)
+        setRestartError('')
+        try {
+          const response = await axios.post('/api/progress/restart-island', {
+            lesson_id: Number(lesson.id)
+          })
+          clearLocallyCompletedLessonIds(user?.id, response.data.lesson_ids)
+        } catch (error) {
+          console.error('Could not restart island progress.', error)
+          setRestartError('The island could not be restarted. Please try again.')
+          setIsRestarting(false)
+          return false
+        }
+
+        setShowGameOver(false)
+        setWrongAnswers(0)
+        resetIslandLives(activeIslandId, MAX_LIVES)
+        setIsDying(false)
+        setDeathPosition(null)
+        setCompleted(false)
+        setLevelAlreadyCleared(false)
+        setIslandCleared(false)
+        setCompletedCode('')
+        setCheck(null)
+        setLiveCode('')
+        setPhase('guided')
+        setToast(null)
+        setGuidedResetKey(current => current + 1)
+        setCanvasResetToken(current => current + 1)
+        setLightningToken(0)
+        deathResolveRef.current = null
+        setRestartError('')
+        setIsRestarting(false)
+
+        guidedCodeRef.current = ''
+        guidedEventsRef.current = []
+        guidedFinalStepRef.current = false
+
+        return true
+      }, [activeIslandId, isRestarting, lesson, user?.id])
+
+    const resetToFirstLevel =
+      useCallback(async () => {
+        if (!(await resetIslandRun())) return
+
+        navigate(
+          `/lesson/1?island=${activeIslandId}`,
+          {
+            state: {
+              islandId: activeIslandId,
+              relativeLevel: 1
+            }
+          }
+        )
+      }, [activeIslandId, navigate, resetIslandRun])
+
+    const returnToMapAfterGameOver =
+      useCallback(async () => {
+        if (!(await resetIslandRun())) return
+        navigate(getIslandRoute(lesson, location))
+      }, [lesson, location, navigate, resetIslandRun])
+
+    const handleWrongAnswer =
+      useCallback(() => {
+        if (
+          levelAlreadyCleared ||
+          isDying ||
+          wrongAnswers >= MAX_LIVES
+        ) return
+
+        const nextWrongAnswers = Math.min(
+          wrongAnswers + 1,
+          MAX_LIVES
+        )
+
+        setWrongAnswers(nextWrongAnswers)
+        setLightningToken(token => token + 1)
+        setIslandLives(
+          activeIslandId,
+          MAX_LIVES - nextWrongAnswers
+        )
+
+        if (MAX_LIVES - nextWrongAnswers === 0) {
+          void triggerLightningDeath()
+        }
+      }, [
+        isDying,
+        levelAlreadyCleared,
+        triggerLightningDeath,
+        wrongAnswers
+      ])
+
+    /* =========================================================
+      PLAYER DEATH / GAME OVER
+      ========================================================= */
+
+    /* =========================================================
+      UNLOCK FREE CODE
+      ========================================================= */
+
+    const handleUnlock =
+      useCallback(
+        builtCode => {
+          if (!completed) {
+            setToast({
+              msg:
+                'Complete Guided Mode first to unlock Free Code.',
+              tone: 'amber',
+              k: Date.now()
+            })
+
+            setTimeout(
+              () => setToast(null),
+              3000
+            )
+
+            return
+          }
+
+          setStarterCode(
+            builtCode ||
+              FREE_CODE_PROMPT
+          )
+
+          setLiveCode(
+            builtCode || ''
+          )
+
+          setCheck(null)
+
+          handlePhaseChange('free')
+        },
+        [
+          completed,
+          handlePhaseChange
+        ]
+      )
+
+    /* =========================================================
+      FREE CODE RUN
+      ========================================================= */
+
+    const handleFreeRun =
+      useCallback(code => {
+        if (isIntroCutscene) return
+
+        const safety =
+          validateFreeCode(code)
+
+        if (!safety.valid) {
+          setToast({
+            msg:
+              safety.message ||
+              FREE_CODE_SAFETY_MESSAGE,
+            tone: 'amber',
             k: Date.now()
           })
 
@@ -1831,390 +2459,12 @@ const deathResolveRef = useRef(null)
             () => setToast(null),
             3000
           )
-        }
-
-        return true
-      })
-      .catch(err => {
-        console.error(err)
-        setCompletionSaveError(
-          err.response?.data?.message ||
-          'Your completed level could not be saved. Retry to sync your progress and check certificate eligibility.'
-        )
-
-        setToast({
-          msg:
-            'Level cleared locally. Progress will sync when you run it again.',
-          tone: 'amber',
-          k: Date.now()
-        })
-
-        setTimeout(
-          () => setToast(null),
-          3500
-        )
-
-        return false
-      })
-      .finally(() => {
-        if (
-          completionPromiseRef.current ===
-          request
-        ) {
-          completionPromiseRef.current =
-            null
-        }
-      })
-
-    completionPromiseRef.current = request
-
-    return request
-  }, [lesson, updateXp, user?.id])
-
-  /* =========================================================
-     LOAD LESSON
-     ========================================================= */
-
-  useEffect(() => {
-    completionPromiseRef.current = null
-
-    setLesson(null)
-    setIntroToken(0)
-    setIsIntroCutscene(false)
-    setHasPlayedIntro(false)
-    setCompleted(false)
-    setLevelAlreadyCleared(false)
-    setCompletedCode('')
-    setIslandCleared(false)
-    setCompletionCertificate(null)
-    setCompletionSaveError('')
-    setShowGameOver(false)
-    setXpGained(0)
-    setToast(null)
-    setNextLesson(null)
-
-    setPhase('guided')
-    setStarterCode('')
-    setLiveCode('')
-
-    setWrongAnswers(
-      MAX_LIVES -
-        getIslandLives(activeIslandId, MAX_LIVES)
-    )
-    setIsDying(false)
-    setDeathPosition(null)
-    setLightningToken(0)
-    setGuidedResetKey(0)
-
-    guidedCodeRef.current = ''
-    guidedEventsRef.current = []
-    guidedFinalStepRef.current = false
-
-    setCheck(null)
-
-    const applyLessonData = (
-      sourceLesson,
-      nextLessonData = null
-    ) => {
-      if (!sourceLesson) return
-
-      let guidedData =
-        sourceLesson.guided ??
-        sourceLesson.guidedSteps ??
-        sourceLesson.steps
-
-      if (typeof guidedData === 'string') {
-        try {
-          guidedData =
-            JSON.parse(guidedData)
-        } catch (_) {
-          guidedData = []
-        }
-      }
-
-      let conceptsData =
-        sourceLesson.concepts
-
-      if (typeof conceptsData === 'string') {
-        try {
-          conceptsData =
-            JSON.parse(conceptsData)
-        } catch (_) {
-          conceptsData = []
-        }
-      }
-
-      let lineBreakdownData =
-        sourceLesson.line_breakdown ??
-        sourceLesson.lineBreakdown ??
-        []
-
-      if (typeof lineBreakdownData === 'string') {
-        try {
-          lineBreakdownData =
-            JSON.parse(lineBreakdownData)
-        } catch (_) {
-          lineBreakdownData = []
-        }
-      }
-
-      setLesson({
-        ...sourceLesson,
-
-        moduleId:
-          sourceLesson.moduleId ??
-          sourceLesson.module_id ??
-          sourceLesson.islandId ??
-          activeIslandId,
-
-        guided: Array.isArray(guidedData)
-          ? guidedData
-          : [],
-
-        concepts: Array.isArray(conceptsData)
-          ? conceptsData
-          : [],
-
-        line_breakdown: Array.isArray(lineBreakdownData)
-          ? lineBreakdownData
-          : [],
-
-        initialCode:
-          sourceLesson.initialCode ??
-          sourceLesson.starter_code ??
-          '',
-
-        checklist: Array.isArray(
-          sourceLesson.checklist
-        )
-          ? sourceLesson.checklist
-          : []
-      })
-
-      setStarterCode(
-        sourceLesson.starter_code ||
-          sourceLesson.initialCode ||
-          FREE_CODE_PROMPT
-      )
-
-      setNextLesson(
-        nextLessonData || null
-      )
-    }
-
-    const fallbackLesson =
-      getLessonByIslandAndLevel(
-        activeIslandId,
-        relativeLevel
-      )
-
-    const loadLesson = async () => {
-      try {
-        const [
-          lessonResponse,
-          progressResponse
-        ] = await Promise.all([
-          axios.get('/api/lessons', {
-            params: {
-              island: activeIslandId,
-              level: relativeLevel
-            }
-          }),
-
-          axios.get('/api/progress')
-        ])
-
-        const fetchedLesson =
-          lessonResponse.data?.[0]
-
-        if (!fetchedLesson) {
-          throw new Error(
-            'Lesson not found for the selected island and level.'
-          )
-        }
-
-        const nextLessonResponse = await axios
-          .get(`/api/lessons/${fetchedLesson.id}/next`)
-          .catch(() => null)
-
-        const serverCompleted =
-          (progressResponse.data || [])
-            .some(item => {
-              const progressLessonId =
-                Number(
-                  item.lesson_id ??
-                  item.activity_id
-                )
-
-              return (
-                progressLessonId ===
-                  Number(
-                    fetchedLesson.id
-                  ) &&
-                (
-                  item.phase ===
-                    'completed' ||
-                  item.completed ===
-                    true ||
-                  item.is_completed ===
-                    true
-                )
-              )
-            })
-
-        if (serverCompleted) {
-          setCompleted(true)
-          setLevelAlreadyCleared(true)
-          setPhase('free')
-        }
-
-        const localLesson =
-          getLessonByIslandAndLevel(
-            activeIslandId,
-            relativeLevel
-          )
-
-        applyLessonData({
-          ...fetchedLesson,
-
-          guided:
-            Array.isArray(
-              fetchedLesson.guided
-            ) &&
-            fetchedLesson.guided.length > 0
-              ? fetchedLesson.guided
-              : localLesson?.guided ||
-                localLesson?.steps ||
-                [],
-
-          briefing:
-            fetchedLesson.briefing ||
-            localLesson?.briefing,
-
-          starter_code:
-            fetchedLesson.starter_code ||
-            localLesson?.starter_code ||
-            localLesson?.initialCode ||
-            ''
-        }, nextLessonResponse?.data?.nextLesson || null)
-      } catch (error) {
-        if (error.response?.status === 403) {
-          setLesson(null)
-          navigate(`/island/${activeIslandId}`, { replace: true })
-          return
-        }
-
-        console.error(
-          'Lesson fetch failed. Falling back to local lesson data.',
-          error
-        )
-
-        if (fallbackLesson) {
-          applyLessonData({
-            ...fallbackLesson,
-
-            guided: Array.isArray(
-              fallbackLesson.guided
-            )
-              ? fallbackLesson.guided
-              : [],
-
-            concepts: Array.isArray(
-              fallbackLesson.concepts
-            )
-              ? fallbackLesson.concepts
-              : []
-          })
-
-          setCompleted(false)
-          setPhase('guided')
-          setNextLesson(null)
 
           return
         }
-
-        setLesson(null)
-      }
-    }
-
-    loadLesson()
-
-    startBgMusic()
-    setMusicOn(true)
-
-    return () => {
-      stopBgMusic()
-    }
-  }, [
-    id,
-    activeIslandId,
-    relativeLevel,
-    navigate
-  ])
-
-  useEffect(() => {
-    if (wrongAnswers >= MAX_LIVES && !isDying) {
-      setShowGameOver(true)
-    }
-  }, [isDying, wrongAnswers])
-
-  useEffect(() => {
-    if (!lesson || hasPlayedIntro) return
-
-    const lessonNumber = Number(
-      lesson.order_index ||
-      lesson.level_label?.match(/\d+/)?.[0] ||
-      relativeLevel
-    )
-    const isLevelOne =
-      lessonNumber === 1 ||
-      lesson.title === "The Gate Golem's Riddle"
-
-    if (!isLevelOne) return
-
-    setHasPlayedIntro(true)
-    setIsIntroCutscene(true)
-    setIntroToken(token => token + 1)
-  }, [lesson, hasPlayedIntro, relativeLevel])
-
-  /* =========================================================
-     PHASE CHANGE
-     ========================================================= */
-
-  const handlePhaseChange =
-    useCallback(
-      phaseName => {
-        if (isIntroCutscene) return
-
-        if (
-          phaseName === 'free' &&
-          !starterCode
-        ) {
-          setStarterCode(
-            FREE_CODE_PROMPT
-          )
-        }
-
-        setPhase(phaseName)
-      },
-      [isIntroCutscene, starterCode]
-    )
-
-  /* =========================================================
-     CORRECT GUIDED STEP
-     ========================================================= */
-
-  const handleStepCorrect =
-    useCallback(
-      (
-        snippet,
-        currentFullCode,
-        isFinalStep
-      ) => {
-        if (isIntroCutscene) return
 
         const diagnostics =
-          lintJava(currentFullCode)
+          lintJava(code)
 
         if (diagnostics.length > 0) {
           setToast({
@@ -2232,1129 +2482,910 @@ const deathResolveRef = useRef(null)
           return
         }
 
-        guidedCodeRef.current =
-          currentFullCode
+        guidedCodeRef.current = ''
+        guidedEventsRef.current = []
+        guidedFinalStepRef.current = false
 
-        guidedFinalStepRef.current =
-          isFinalStep
+        setCheck(null)
 
-        setLiveCode(
-          currentFullCode
-        )
+        setLiveCode(code)
 
         setPlayToken(
           token => token + 1
         )
-      },
-      [isIntroCutscene]
-    )
+      }, [isIntroCutscene])
 
-  /* =========================================================
-     WRONG ANSWER
-     ========================================================= */
+    const handleIntroComplete =
+      useCallback(() => {
+        setIsIntroCutscene(false)
+      }, [])
 
-  const triggerLightningDeath =
-    useCallback(() => {
-      setIsDying(true)
+    /* =========================================================
+      RESET CANVAS
+      ========================================================= */
 
-      return new Promise(resolve => {
-        deathResolveRef.current = resolve
-      })
-    }, [])
-
-  const finishLightningDeath =
-    useCallback(() => {
-      setIsDying(false)
-      setShowGameOver(true)
-
-      const resolve = deathResolveRef.current
-
-      deathResolveRef.current = null
-
-      if (resolve) {
-        resolve()
-      }
-    }, [])
-
-  const resetIslandRun =
-    useCallback(async () => {
-      if (!lesson?.id || isRestarting) return
-
-      setIsRestarting(true)
-      setRestartError('')
-      try {
-        const response = await axios.post('/api/progress/restart-island', {
-          lesson_id: Number(lesson.id)
-        })
-        clearLocallyCompletedLessonIds(user?.id, response.data.lesson_ids)
-      } catch (error) {
-        console.error('Could not restart island progress.', error)
-        setRestartError('The island could not be restarted. Please try again.')
-        setIsRestarting(false)
-        return false
-      }
-
-      setShowGameOver(false)
-      setWrongAnswers(0)
-      resetIslandLives(activeIslandId, MAX_LIVES)
-      setIsDying(false)
-      setDeathPosition(null)
-      setCompleted(false)
-      setLevelAlreadyCleared(false)
-      setIslandCleared(false)
-      setCompletedCode('')
-      setCheck(null)
-      setLiveCode('')
-      setPhase('guided')
-      setToast(null)
-      setGuidedResetKey(current => current + 1)
-      setCanvasResetToken(current => current + 1)
-      setLightningToken(0)
-      deathResolveRef.current = null
-      setRestartError('')
-      setIsRestarting(false)
-
-      guidedCodeRef.current = ''
-      guidedEventsRef.current = []
-      guidedFinalStepRef.current = false
-
-      return true
-    }, [activeIslandId, isRestarting, lesson, user?.id])
-
-  const resetToFirstLevel =
-    useCallback(async () => {
-      if (!(await resetIslandRun())) return
-
-      navigate(
-        `/lesson/1?island=${activeIslandId}`,
-        {
-          state: {
-            islandId: activeIslandId,
-            relativeLevel: 1
-          }
-        }
-      )
-    }, [activeIslandId, navigate, resetIslandRun])
-
-  const returnToMapAfterGameOver =
-    useCallback(async () => {
-      if (!(await resetIslandRun())) return
-      navigate(getIslandRoute(lesson, location))
-    }, [lesson, location, navigate, resetIslandRun])
-
-  const handleWrongAnswer =
-    useCallback(() => {
-      if (
-        levelAlreadyCleared ||
-        isDying ||
-        wrongAnswers >= MAX_LIVES
-      ) return
-
-      const nextWrongAnswers = Math.min(
-        wrongAnswers + 1,
-        MAX_LIVES
-      )
-
-      setWrongAnswers(nextWrongAnswers)
-      setLightningToken(token => token + 1)
-      setIslandLives(
-        activeIslandId,
-        MAX_LIVES - nextWrongAnswers
-      )
-
-      if (MAX_LIVES - nextWrongAnswers === 0) {
-        void triggerLightningDeath()
-      }
-    }, [
-      isDying,
-      levelAlreadyCleared,
-      triggerLightningDeath,
-      wrongAnswers
-    ])
-
-  /* =========================================================
-     PLAYER DEATH / GAME OVER
-     ========================================================= */
-
-  /* =========================================================
-     UNLOCK FREE CODE
-     ========================================================= */
-
-  const handleUnlock =
-    useCallback(
-      builtCode => {
-        if (!completed) {
-          setToast({
-            msg:
-              'Complete Guided Mode first to unlock Free Code.',
-            tone: 'amber',
-            k: Date.now()
-          })
-
-          setTimeout(
-            () => setToast(null),
-            3000
-          )
-
-          return
-        }
-
-        setStarterCode(
-          builtCode ||
-            FREE_CODE_PROMPT
-        )
+    const resetCanvasForReplay =
+      useCallback(() => {
+        setPhase('guided')
+        setCheck(null)
+        setCompleted(false)
 
         setLiveCode(
-          builtCode || ''
+          starterCode
         )
 
-        setCheck(null)
+        guidedCodeRef.current = ''
+        guidedEventsRef.current = []
+        guidedFinalStepRef.current = false
 
-        handlePhaseChange('free')
-      },
-      [
-        completed,
-        handlePhaseChange
-      ]
-    )
+        setWrongAnswers(
+          MAX_LIVES -
+            getIslandLives(activeIslandId, MAX_LIVES)
+        )
+        setIsDying(false)
 
-  /* =========================================================
-     FREE CODE RUN
-     ========================================================= */
-
-  const handleFreeRun =
-    useCallback(code => {
-      if (isIntroCutscene) return
-
-      const safety =
-        validateFreeCode(code)
-
-      if (!safety.valid) {
-        setToast({
-          msg:
-            safety.message ||
-            FREE_CODE_SAFETY_MESSAGE,
-          tone: 'amber',
-          k: Date.now()
-        })
-
-        setTimeout(
-          () => setToast(null),
-          3000
+        setGuidedResetKey(
+          key => key + 1
         )
 
-        return
-      }
-
-      const diagnostics =
-        lintJava(code)
-
-      if (diagnostics.length > 0) {
-        setToast({
-          msg:
-            diagnostics[0].message,
-          tone: 'amber',
-          k: Date.now()
-        })
-
-        setTimeout(
-          () => setToast(null),
-          3000
+        setCanvasResetToken(
+          token => token + 1
         )
 
-        return
-      }
+        setReplayToken(
+          token => token + 1
+        )
+      }, [activeIslandId, starterCode])
 
-      guidedCodeRef.current = ''
-      guidedEventsRef.current = []
-      guidedFinalStepRef.current = false
+    /* =========================================================
+      GAME CANVAS RESULT
+      ========================================================= */
 
-      setCheck(null)
+    const handleResult =
+      useCallback(
+        res => {
+          if (res?.error) {
+            setToast({
+              msg: res.error,
+              tone: 'amber',
+              k: Date.now()
+            })
 
-      setLiveCode(code)
+            setTimeout(
+              () => setToast(null),
+              3000
+            )
 
-      setPlayToken(
-        token => token + 1
+            return
+          }
+
+          if (!lesson) return
+
+          const isGuidedRun =
+            phase === 'guided'
+
+          guidedEventsRef.current =
+            isGuidedRun
+              ? [
+                  ...guidedEventsRef.current,
+                  ...(res.events || [])
+                ]
+              : res.events || []
+
+          const executedCode =
+            isGuidedRun
+              ? guidedCodeRef.current
+              : res.code ||
+                liveCode
+
+          const validation =
+            validateLesson(
+              lesson,
+              guidedEventsRef.current,
+              executedCode
+            )
+
+          setCheck(validation)
+
+          if (
+            validation.passed &&
+            (
+              !isGuidedRun ||
+              guidedFinalStepRef.current
+            )
+          ) {
+            setCompletedCode(
+              executedCode
+            )
+
+            saveProgress()
+          }
+        },
+        [
+          lesson,
+          liveCode,
+          phase,
+          saveProgress
+        ]
       )
-    }, [isIntroCutscene])
 
-  const handleIntroComplete =
-    useCallback(() => {
-      setIsIntroCutscene(false)
-    }, [])
+    /* =========================================================
+      ALL GUIDED STEPS DONE
+      ========================================================= */
 
-  /* =========================================================
-     RESET CANVAS
-     ========================================================= */
-
-  const resetCanvasForReplay =
-    useCallback(() => {
-      setPhase('guided')
-      setCheck(null)
-      setCompleted(false)
-
-      setLiveCode(
-        starterCode
+    const handleAllStepsDone =
+      useCallback(
+        code => {
+          setCompletedCode(code)
+          saveProgress()
+        },
+        [saveProgress]
       )
 
-      guidedCodeRef.current = ''
-      guidedEventsRef.current = []
-      guidedFinalStepRef.current = false
+    /* =========================================================
+      NEXT LEVEL
+      Island 3 has 20 levels (boss 1 on level 10, boss 2 on
+      level 20). Only the LAST level of an island clears it.
+      ========================================================= */
 
-      setWrongAnswers(
-        MAX_LIVES -
-          getIslandLives(activeIslandId, MAX_LIVES)
-      )
-      setIsDying(false)
+    const goToNext =
+      async () => {
+        if (!lesson) return
 
-      setGuidedResetKey(
-        key => key + 1
-      )
+        const progressSaved = await saveProgress()
+        if (!progressSaved) return
 
-      setCanvasResetToken(
-        token => token + 1
-      )
+        try {
+          const response = await axios.get(`/api/lessons/${lesson.id}/next`)
+          const target = response.data?.nextLesson
 
-      setReplayToken(
-        token => token + 1
-      )
-    }, [activeIslandId, starterCode])
+          if (!target) {
+            setIslandCleared(true)
+            return
+          }
 
-  /* =========================================================
-     GAME CANVAS RESULT
-     ========================================================= */
+          const nextLevel = Number(target.order_index) ||
+            Number(target.level_label?.match(/\d+/)?.[0]) || 1
+          const currentIslandId = Number(target.module_id)
 
-  const handleResult =
-    useCallback(
-      res => {
-        if (res?.error) {
+          navigate(
+            `/lesson/${nextLevel}?island=${currentIslandId}`,
+            {
+              state: {
+                islandId:
+                  currentIslandId,
+                relativeLevel:
+                  nextLevel
+              }
+            }
+          )
+        } catch (error) {
+          console.error('Could not load the next level.', error)
           setToast({
-            msg: res.error,
+            msg: 'The next level could not be loaded. Please try again.',
             tone: 'amber',
             k: Date.now()
           })
-
-          setTimeout(
-            () => setToast(null),
-            3000
-          )
-
-          return
         }
+      }
 
-        if (!lesson) return
+    /* =========================================================
+      MUSIC
+      ========================================================= */
 
-        const isGuidedRun =
-          phase === 'guided'
+    const toggleMusic = () => {
+      const nextMusicOn = !musicOn
+      setMusicOn(nextMusicOn)
+      setMusicSliderOpen(nextMusicOn)
 
-        guidedEventsRef.current =
-          isGuidedRun
-            ? [
-                ...guidedEventsRef.current,
-                ...(res.events || [])
-              ]
-            : res.events || []
-
-        const executedCode =
-          isGuidedRun
-            ? guidedCodeRef.current
-            : res.code ||
-              liveCode
-
-        const validation =
-          validateLesson(
-            lesson,
-            guidedEventsRef.current,
-            executedCode
-          )
-
-        setCheck(validation)
-
-        if (
-          validation.passed &&
-          (
-            !isGuidedRun ||
-            guidedFinalStepRef.current
-          )
-        ) {
-          setCompletedCode(
-            executedCode
-          )
-
-          saveProgress()
+      if (window._cqAudio) {
+        if (nextMusicOn) {
+          window._cqAudio.volume = musicVolume
+          window._cqAudio.play().catch(() => {})
+        } else {
+          window._cqAudio.pause()
         }
-      },
-      [
-        lesson,
-        liveCode,
-        phase,
-        saveProgress
-      ]
-    )
-
-  /* =========================================================
-     ALL GUIDED STEPS DONE
-     ========================================================= */
-
-  const handleAllStepsDone =
-    useCallback(
-      code => {
-        setCompletedCode(code)
-        saveProgress()
-      },
-      [saveProgress]
-    )
-
-  /* =========================================================
-     NEXT LEVEL
-     Island 3 has 20 levels (boss 1 on level 10, boss 2 on
-     level 20). Only the LAST level of an island clears it.
-     ========================================================= */
-
-  const goToNext =
-    async () => {
-      if (!lesson) return
-
-      const progressSaved = await saveProgress()
-      if (!progressSaved) return
-
-      try {
-        const response = await axios.get(`/api/lessons/${lesson.id}/next`)
-        const target = response.data?.nextLesson
-
-        if (!target) {
-          setIslandCleared(true)
-          return
-        }
-
-        const nextLevel = Number(target.order_index) ||
-          Number(target.level_label?.match(/\d+/)?.[0]) || 1
-        const currentIslandId = Number(target.module_id)
-
-        navigate(
-          `/lesson/${nextLevel}?island=${currentIslandId}`,
-          {
-            state: {
-              islandId:
-                currentIslandId,
-              relativeLevel:
-                nextLevel
-            }
-          }
-        )
-      } catch (error) {
-        console.error('Could not load the next level.', error)
-        setToast({
-          msg: 'The next level could not be loaded. Please try again.',
-          tone: 'amber',
-          k: Date.now()
-        })
       }
     }
 
-  /* =========================================================
-     MUSIC
-     ========================================================= */
+    const handleMusicVolumeChange = event => {
+      const nextVolume = Number(event.target.value) / 100
+      setMusicVolume(nextVolume)
 
-  const toggleMusic = () => {
-    const nextMusicOn = !musicOn
-    setMusicOn(nextMusicOn)
-    setMusicSliderOpen(nextMusicOn)
-
-    if (window._cqAudio) {
-      if (nextMusicOn) {
-        window._cqAudio.volume = musicVolume
-        window._cqAudio.play().catch(() => {})
-      } else {
-        window._cqAudio.pause()
+      if (window._cqAudio) {
+        window._cqAudio.volume = nextVolume
       }
-    }
-  }
 
-  const handleMusicVolumeChange = event => {
-    const nextVolume = Number(event.target.value) / 100
-    setMusicVolume(nextVolume)
-
-    if (window._cqAudio) {
-      window._cqAudio.volume = nextVolume
+      setMusicOn(nextVolume > 0.02)
     }
 
-    setMusicOn(nextVolume > 0.02)
-  }
+    /* =========================================================
+      LOADING
+      ========================================================= */
 
-  /* =========================================================
-     LOADING
-     ========================================================= */
+    if (!lesson) {
+      return (
+        <div
+          style={{
+            height: '100vh',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: C.onyx50,
+            flexDirection: 'column',
+            gap: 12
+          }}
+        >
+          <div
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 10,
+              background: C.purple,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+          >
+            <Ico
+              n="bolt"
+              s={18}
+              c="#fff"
+            />
+          </div>
 
-  if (!lesson) {
+          <div
+            style={{
+              fontSize: 14,
+              color: C.onyx400,
+              fontWeight: 500
+            }}
+          >
+            Loading lesson…
+          </div>
+        </div>
+      )
+    }
+
+    /* Is this the last level of the island? (10, or 20 on Island 3) */
+    const currentLevelNumber = Number(
+      lesson.order_index ||
+        lesson.level_label?.match(/\d+/)?.[0] ||
+        relativeLevel
+    )
+
+    const isFinalLevel =
+      currentLevelNumber >=
+      getIslandLevelCount(activeIslandId)
+
+    /* =========================================================
+      PAGE
+      ========================================================= */
+
     return (
       <div
+        className="lesson-page"
         style={{
           height: '100vh',
           display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: C.onyx50,
           flexDirection: 'column',
-          gap: 12
+          overflow: 'hidden',
+          background: '#0F172A'
         }}
       >
         <div
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 10,
-            background: C.purple,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}
-        >
-          <Ico
-            n="bolt"
-            s={18}
-            c="#fff"
-          />
-        </div>
-
-        <div
-          style={{
-            fontSize: 14,
-            color: C.onyx400,
-            fontWeight: 500
-          }}
-        >
-          Loading lesson…
-        </div>
-      </div>
-    )
-  }
-
-  /* Is this the last level of the island? (10, or 20 on Island 3) */
-  const currentLevelNumber = Number(
-    lesson.order_index ||
-      lesson.level_label?.match(/\d+/)?.[0] ||
-      relativeLevel
-  )
-
-  const isFinalLevel =
-    currentLevelNumber >=
-    getIslandLevelCount(activeIslandId)
-
-  /* =========================================================
-     PAGE
-     ========================================================= */
-
-  return (
-    <div
-      className="lesson-page"
-      style={{
-        height: '100vh',
-        display: 'flex',
-        flexDirection: 'column',
-        overflow: 'hidden',
-        background: '#0F172A'
-      }}
-    >
-      <div
-        className="lesson-page__orientation-prompt"
-        role="region"
-        aria-label="Phone orientation required"
-      >
-        <button
-          type="button"
-          className="lesson-page__orientation-back"
-          onClick={() =>
-            navigate(
-              getIslandRoute(lesson, location)
-            )
-          }
-        >
-          <ArrowLeft size={16} aria-hidden="true" />
-          <span>Back</span>
-        </button>
-        <div className="lesson-page__orientation-icon" aria-hidden="true">
-          <Smartphone size={34} strokeWidth={1.8} />
-          <RotateCw size={20} strokeWidth={2.4} />
-        </div>
-        <p>Rotate your phone to play</p>
-      </div>
-
-      {/* TOP BAR */}
-      <div
-        className="lesson-page__topbar"
-        style={{
-          flexShrink: 0,
-          height: 50,
-          background:
-            'rgba(15,23,42,0.95)',
-          borderBottom:
-            '1px solid rgba(255,255,255,0.07)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent:
-            'space-between',
-          padding: '0 14px',
-          gap: 10,
-          zIndex: 20
-        }}
-      >
-        <div
-          className="lesson-page__topbar-title"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10
-          }}
+          className="lesson-page__orientation-prompt"
+          role="region"
+          aria-label="Phone orientation required"
         >
           <button
             type="button"
-            className="lesson-page__back"
+            className="lesson-page__orientation-back"
             onClick={() =>
               navigate(
-                getIslandRoute(
-                  lesson,
-                  location
-                )
+                getIslandRoute(lesson, location)
               )
             }
-            style={{
-              background:
-                'rgba(255,255,255,0.08)',
-              border:
-                '1px solid rgba(255,255,255,0.1)',
-              borderRadius: 7,
-              padding: '5px 11px',
-              color:
-                'rgba(255,255,255,0.65)',
-              fontSize: 12,
-              fontWeight: 600,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4
-            }}
           >
-            ← Back
+            <ArrowLeft size={16} aria-hidden="true" />
+            <span>Back</span>
           </button>
-
-          <div
-            style={{
-              width: 1,
-              height: 18,
-              background:
-                'rgba(255,255,255,0.1)'
-            }}
-          />
-
-          <div className="lesson-page__lesson-heading">
-            <div
-              className="lesson-page__island-label"
-              style={{
-                fontSize: 10,
-                color: C.purple,
-                fontWeight: 700,
-                textTransform:
-                  'uppercase',
-                letterSpacing: '.06em'
-              }}
-            >
-              {`ISLAND ${activeIslandId} - ${javaLabel(
-                lesson.module_title ||
-                  lesson.track ||
-                  `Module ${activeIslandId}`
-              )}`}
-            </div>
-
-            <div
-              className="lesson-page__lesson-title"
-              style={{
-                fontSize: 13,
-                color:
-                  'rgba(255,255,255,0.9)',
-                fontWeight: 600
-              }}
-            >
-              {lesson.title}
-            </div>
+          <div className="lesson-page__orientation-icon" aria-hidden="true">
+            <Smartphone size={34} strokeWidth={1.8} />
+            <RotateCw size={20} strokeWidth={2.4} />
           </div>
+          <p>Rotate your phone to play</p>
         </div>
 
+        {/* TOP BAR */}
         <div
-          className="lesson-page__topbar-actions"
+          className="lesson-page__topbar"
           style={{
+            flexShrink: 0,
+            height: 50,
+            background:
+              'rgba(15,23,42,0.95)',
+            borderBottom:
+              '1px solid rgba(255,255,255,0.07)',
             display: 'flex',
             alignItems: 'center',
-            gap: 8
+            justifyContent:
+              'space-between',
+            padding: '0 14px',
+            gap: 10,
+            zIndex: 20
           }}
         >
-          {/* MODE SWITCH */}
           <div
-            style={{
-              display: 'flex',
-              background:
-                'rgba(255,255,255,0.07)',
-              borderRadius: 999,
-              padding: 3,
-              gap: 2
-            }}
-          >
-            {['guided', 'free'].map(
-              p => (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() =>
-                    handlePhaseChange(p)
-                  }
-                  disabled={isIntroCutscene}
-                  style={{
-                    padding:
-                      '4px 13px',
-                    borderRadius: 999,
-                    fontSize: 11,
-                    fontWeight: 600,
-                    background:
-                      phase === p
-                        ? C.purple
-                        : 'transparent',
-                    color:
-                      phase === p
-                        ? '#fff'
-                        : 'rgba(255,255,255,0.4)',
-                    transition:
-                      'all .2s',
-                    display: 'flex',
-                    alignItems:
-                      'center',
-                    gap: 4,
-                    userSelect: 'none',
-                    border: 'none',
-                    cursor: isIntroCutscene ? 'not-allowed' : 'pointer',
-                    opacity: isIntroCutscene ? 0.5 : 1
-                  }}
-                >
-                  {p === 'guided'
-                    ? 'Guided'
-                    : 'Free Code'}
-                </button>
-              )
-            )}
-          </div>
-
-          <Pill
-            bg={C.amberLight}
-            col={C.amberDark}
-          >
-            +{lesson.xp_reward} XP
-          </Pill>
-
-          {/* MUSIC */}
-          <div
+            className="lesson-page__topbar-title"
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: 6,
-              background:
-                'transparent'
+              gap: 10
             }}
           >
             <button
               type="button"
-              onClick={toggleMusic}
-              title="Toggle music"
+              className="lesson-page__back"
+              onClick={() =>
+                navigate(
+                  getIslandRoute(
+                    lesson,
+                    location
+                  )
+                )
+              }
+              style={{
+                background:
+                  'rgba(255,255,255,0.08)',
+                border:
+                  '1px solid rgba(255,255,255,0.1)',
+                borderRadius: 7,
+                padding: '5px 11px',
+                color:
+                  'rgba(255,255,255,0.65)',
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4
+              }}
+            >
+              ← Back
+            </button>
+
+            <div
+              style={{
+                width: 1,
+                height: 18,
+                background:
+                  'rgba(255,255,255,0.1)'
+              }}
+            />
+
+            <div className="lesson-page__lesson-heading">
+              <div
+                className="lesson-page__island-label"
+                style={{
+                  fontSize: 10,
+                  color: C.purple,
+                  fontWeight: 700,
+                  textTransform:
+                    'uppercase',
+                  letterSpacing: '.06em'
+                }}
+              >
+                {`ISLAND ${activeIslandId} - ${javaLabel(
+                  lesson.module_title ||
+                    lesson.track ||
+                    `Module ${activeIslandId}`
+                )}`}
+              </div>
+
+              <div
+                className="lesson-page__lesson-title"
+                style={{
+                  fontSize: 13,
+                  color:
+                    'rgba(255,255,255,0.9)',
+                  fontWeight: 600
+                }}
+              >
+                {lesson.title}
+              </div>
+            </div>
+          </div>
+
+          <div
+            className="lesson-page__topbar-actions"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8
+            }}
+          >
+            {/* MODE SWITCH */}
+            <div
+              style={{
+                display: 'flex',
+                background:
+                  'rgba(255,255,255,0.07)',
+                borderRadius: 999,
+                padding: 3,
+                gap: 2
+              }}
+            >
+              {['guided', 'free'].map(
+                p => (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() =>
+                      handlePhaseChange(p)
+                    }
+                    disabled={isIntroCutscene}
+                    style={{
+                      padding:
+                        '4px 13px',
+                      borderRadius: 999,
+                      fontSize: 11,
+                      fontWeight: 600,
+                      background:
+                        phase === p
+                          ? C.purple
+                          : 'transparent',
+                      color:
+                        phase === p
+                          ? '#fff'
+                          : 'rgba(255,255,255,0.4)',
+                      transition:
+                        'all .2s',
+                      display: 'flex',
+                      alignItems:
+                        'center',
+                      gap: 4,
+                      userSelect: 'none',
+                      border: 'none',
+                      cursor: isIntroCutscene ? 'not-allowed' : 'pointer',
+                      opacity: isIntroCutscene ? 0.5 : 1
+                    }}
+                  >
+                    {p === 'guided'
+                      ? 'Guided'
+                      : 'Free Code'}
+                  </button>
+                )
+              )}
+            </div>
+
+            <Pill
+              bg={C.amberLight}
+              col={C.amberDark}
+            >
+              +{lesson.xp_reward} XP
+            </Pill>
+
+            {/* MUSIC */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                background:
+                  'transparent'
+              }}
+            >
+              <button
+                type="button"
+                onClick={toggleMusic}
+                title="Toggle music"
+                style={{
+                  background:
+                    'rgba(255,255,255,0.07)',
+                  border:
+                    '1px solid rgba(255,255,255,0.1)',
+                  borderRadius: 7,
+                  width: 30,
+                  height: 30,
+                  cursor: 'pointer',
+                  fontSize: 13,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent:
+                    'center',
+                  padding: 0
+                }}
+              >
+                {musicOn
+                  ? '🎵'
+                  : '🔇'}
+              </button>
+
+              {musicSliderOpen && (
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={Math.round(musicVolume * 100)}
+                  onChange={handleMusicVolumeChange}
+                  title="Music volume"
+                  aria-label="Music volume"
+                  style={{
+                    width: 58,
+                    accentColor: '#8b5cf6',
+                    height: 14,
+                    cursor: 'pointer'
+                  }}
+                />
+              )}
+            </div>
+
+            {/* PANEL */}
+            <button
+              type="button"
+              onClick={() =>
+                setPanelOpen(
+                  open => !open
+                )
+              }
+              title="Toggle panel"
               style={{
                 background:
                   'rgba(255,255,255,0.07)',
                 border:
                   '1px solid rgba(255,255,255,0.1)',
                 borderRadius: 7,
-                width: 30,
-                height: 30,
+                width: 32,
+                height: 32,
                 cursor: 'pointer',
-                fontSize: 13,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent:
-                  'center',
-                padding: 0
+                  'center'
               }}
             >
-              {musicOn
-                ? '🎵'
-                : '🔇'}
-            </button>
-
-            {musicSliderOpen && (
-              <input
-                type="range"
-                min="0"
-                max="100"
-                value={Math.round(musicVolume * 100)}
-                onChange={handleMusicVolumeChange}
-                title="Music volume"
-                aria-label="Music volume"
-                style={{
-                  width: 58,
-                  accentColor: '#8b5cf6',
-                  height: 14,
-                  cursor: 'pointer'
-                }}
+              <Ico
+                n="chevRight"
+                s={15}
+                c="rgba(255,255,255,0.6)"
               />
-            )}
+            </button>
           </div>
-
-          {/* PANEL */}
-          <button
-            type="button"
-            onClick={() =>
-              setPanelOpen(
-                open => !open
-              )
-            }
-            title="Toggle panel"
-            style={{
-              background:
-                'rgba(255,255,255,0.07)',
-              border:
-                '1px solid rgba(255,255,255,0.1)',
-              borderRadius: 7,
-              width: 32,
-              height: 32,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent:
-                'center'
-            }}
-          >
-            <Ico
-              n="chevRight"
-              s={15}
-              c="rgba(255,255,255,0.6)"
-            />
-          </button>
         </div>
-      </div>
 
-      {/* MAIN */}
-      <div
-        className="lesson-page__main"
-        style={{
-          flex: 1,
-          display: 'flex',
-          overflow: 'hidden'
-        }}
-      >
-        {/* GAME CANVAS */}
+        {/* MAIN */}
         <div
-          className="lesson-page__game"
+          className="lesson-page__main"
           style={{
             flex: 1,
-            position: 'relative',
-            overflow: 'hidden',
-            minWidth: 0
-          }}
-        >
-          <GameCanvas
-            playToken={playToken}
-            introToken={introToken}
-            replayToken={replayToken}
-            onIntroComplete={handleIntroComplete}
-            code={liveCode}
-            onResult={handleResult}
-            onCharacterPosition={setDeathPosition}
-            target={lesson.target_tiles}
-            lessonData={lesson}
-            initialPipPosition={
-              initialPipPosition ??
-              (Number(lesson.initial_tile) || 0)
-            }
-            resetToken={
-              canvasResetToken
-            }
-            levelLabel={
-              lesson.level_label
-            }
-            levelTitle={lesson.title}
-            lessonId={lesson.id}
-            executionMode={phase}
-            levelState={
-              completed
-                ? 'cleared'
-                : playToken > 0
-                  ? 'coding'
-                  : 'idle'
-            }
-            onNextLevel={goToNext}
-            onIslandComplete={goToNext}
-            strikeToken={lightningToken}
-            isDying={isDying}
-            onPipDeathComplete={finishLightningDeath}
-            fullHeight
-          />
-        </div>
-
-        {/* RIGHT PANEL */}
-        <div
-          className={`lesson-page__panel${panelOpen ? ' lesson-page__panel--open' : ''}`}
-          style={{
-            width: panelOpen
-              ? PANEL_W
-              : 0,
-
-            minWidth: panelOpen
-              ? PANEL_W
-              : 0,
-
-            flexShrink: 0,
-
-            background: '#fff',
-
-            borderLeft:
-              `1px solid ${C.onyx100}`,
-
             display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden',
-
-            transition:
-              'width .22s ease, min-width .22s ease',
-
-            /*
-             * IMPORTANT FIX:
-             * Keeps Guided Mode above the
-             * GameCanvas and prevents the
-             * canvas from stealing clicks.
-             */
-            position: 'relative',
-            zIndex: 50
+            overflow: 'hidden'
           }}
         >
-          {panelOpen &&
-            phase === 'guided' && (
-              <GuidedPanel
-                key={`${lesson.id}-${guidedResetKey}`}
-                lesson={lesson}
-                disabled={isIntroCutscene}
-                onUnlock={
-                  handleUnlock
-                }
-                onNext={goToNext}
-                onStepCorrect={
-                  handleStepCorrect
-                }
-                onWrongAnswer={
-                  handleWrongAnswer
-                }
-                lives={lives}
-                levelAlreadyCleared={
-                  levelAlreadyCleared
-                }
-                onAllStepsDone={
-                  handleAllStepsDone
-                }
-                taskComplete={
-                  completed
-                }
-                completedCode={
-                  completedCode
-                }
-                isFinalLevel={
-                  !nextLesson
-                }
-              />
-            )}
-
-          {panelOpen &&
-            phase === 'free' && (
-              <FreeCodePanel
-                key={`${lesson.id}-${starterCode}`}
-                lesson={lesson}
-                disabled={isIntroCutscene}
-                starterCode={
-                  starterCode
-                }
-                check={check}
-                hint={hint}
-                onRun={
-                  handleFreeRun
-                }
-                onHint={() =>
-                  setHint(
-                    h => !h
-                  )
-                }
-                completed={
-                  completed
-                }
-                completedCode={
-                  completedCode
-                }
-                onNext={
-                  goToNext
-                }
-                onResetReplay={() => {
-                  resetCanvasForReplay()
-                }}
-                onResetCanvas={
-                  resetCanvasForReplay
-                }
-                isFinalLevel={
-                  !nextLesson
-                }
-              />
-            )}
-        </div>
-      </div>
-
-      
-
-      {showGameOver && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="game-over-title"
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 100,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 20,
-            background: 'rgba(15,23,42,0.72)'
-          }}
-        >
+          {/* GAME CANVAS */}
           <div
+            className="lesson-page__game"
             style={{
-              width: 'min(100%, 390px)',
-              padding: 28,
-              borderRadius: 16,
+              flex: 1,
+              position: 'relative',
+              overflow: 'hidden',
+              minWidth: 0
+            }}
+            
+          >
+                {showRecall && (
+        <RecallCutscene onDone={() => {
+          setShowRecall(false)
+          setHasPlayedIntro(true)
+          setIsIntroCutscene(true)
+          setIntroToken(t => t + 1)
+        }} />
+      )}
+      {activeIslandId === FINAL_ISLAND_ID && !showRecall && (
+        <MemoryOrbs lit={Math.min(MEMORIES.length, Math.max(0, currentLevelNumber - 1))} />
+      )}
+            
+            <GameCanvas
+              playToken={playToken}
+              introToken={introToken}
+              replayToken={replayToken}
+              onIntroComplete={handleIntroComplete}
+              code={liveCode}
+              onResult={handleResult}
+              onCharacterPosition={setDeathPosition}
+              target={lesson.target_tiles}
+              lessonData={lesson}
+              initialPipPosition={
+                initialPipPosition ??
+                (Number(lesson.initial_tile) || 0)
+              }
+              resetToken={
+                canvasResetToken
+              }
+              levelLabel={
+                lesson.level_label
+              }
+              levelTitle={lesson.title}
+              lessonId={lesson.id}
+              executionMode={phase}
+              levelState={
+                completed
+                  ? 'cleared'
+                  : playToken > 0
+                    ? 'coding'
+                    : 'idle'
+              }
+              onNextLevel={goToNext}
+              onIslandComplete={goToNext}
+              strikeToken={lightningToken}
+              isDying={isDying}
+              onPipDeathComplete={finishLightningDeath}
+              fullHeight
+            />
+          </div>
+
+          {/* RIGHT PANEL */}
+          <div
+            className={`lesson-page__panel${panelOpen ? ' lesson-page__panel--open' : ''}`}
+            style={{
+              width: panelOpen
+                ? PANEL_W
+                : 0,
+
+              minWidth: panelOpen
+                ? PANEL_W
+                : 0,
+
+              flexShrink: 0,
+
               background: '#fff',
-              textAlign: 'center',
-              boxShadow: '0 24px 70px rgba(15,23,42,0.3)'
+
+              borderLeft:
+                `1px solid ${C.onyx100}`,
+
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+
+              transition:
+                'width .22s ease, min-width .22s ease',
+
+              /*
+              * IMPORTANT FIX:
+              * Keeps Guided Mode above the
+              * GameCanvas and prevents the
+              * canvas from stealing clicks.
+              */
+              position: 'relative',
+              zIndex: 50
+            }}
+          >
+            {panelOpen &&
+              phase === 'guided' && (
+                <GuidedPanel
+                  key={`${lesson.id}-${guidedResetKey}`}
+                  lesson={lesson}
+                  disabled={isIntroCutscene}
+                  onUnlock={
+                    handleUnlock
+                  }
+                  onNext={goToNext}
+                  onStepCorrect={
+                    handleStepCorrect
+                  }
+                  onWrongAnswer={
+                    handleWrongAnswer
+                  }
+                  lives={lives}
+                maxLives={MAX_LIVES}
+                  levelAlreadyCleared={
+                    levelAlreadyCleared
+                  }
+                  onAllStepsDone={
+                    handleAllStepsDone
+                  }
+                  taskComplete={
+                    completed
+                  }
+                  completedCode={
+                    completedCode
+                  }
+                  isFinalLevel={
+                    !nextLesson
+                  }
+                />
+              )}
+
+            {panelOpen &&
+              phase === 'free' && (
+                <FreeCodePanel
+                  key={`${lesson.id}-${starterCode}`}
+                  lesson={lesson}
+                  disabled={isIntroCutscene}
+                  starterCode={
+                    starterCode
+                  }
+                  check={check}
+                  hint={hint}
+                  onRun={
+                    handleFreeRun
+                  }
+                  onHint={() =>
+                    setHint(
+                      h => !h
+                    )
+                  }
+                  completed={
+                    completed
+                  }
+                  completedCode={
+                    completedCode
+                  }
+                  onNext={
+                    goToNext
+                  }
+                  onResetReplay={() => {
+                    resetCanvasForReplay()
+                  }}
+                  onResetCanvas={
+                    resetCanvasForReplay
+                  }
+                  isFinalLevel={
+                    !nextLesson
+                  }
+                />
+              )}
+          </div>
+        </div>
+
+        
+
+        {showGameOver && (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="game-over-title"
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 100,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 20,
+              background: 'rgba(15,23,42,0.72)'
             }}
           >
             <div
               style={{
-                fontSize: 32,
-                marginBottom: 10
-              }}
-              aria-hidden="true"
-            >
-              💔
-            </div>
-            <h2
-              id="game-over-title"
-              style={{
-                margin: '0 0 8px',
-                color: C.onyx,
-                fontSize: 24
+                width: 'min(100%, 390px)',
+                padding: 28,
+                borderRadius: 16,
+                background: '#fff',
+                textAlign: 'center',
+                boxShadow: '0 24px 70px rgba(15,23,42,0.3)'
               }}
             >
-              Game Over
-            </h2>
-            <p
-              style={{
-                margin: '0 0 22px',
-                color: C.onyx600,
-                lineHeight: 1.5
-              }}
-            >
-              Your three hearts are gone. Restart this island from Level 1?
-            </p>
-            {restartError && (
-              <p role="alert" style={{ margin: '-10px 0 16px', color: '#B91C1C', fontSize: 13 }}>
-                {restartError}
-              </p>
-            )}
-            <div
-              style={{
-                display: 'flex',
-                gap: 10,
-                justifyContent: 'center'
-              }}
-            >
-              <button
-                type="button"
-                onClick={returnToMapAfterGameOver}
-                disabled={isRestarting}
+              <div
                 style={{
-                  flex: 1,
-                  padding: '11px 14px',
-                  border: `1px solid ${C.onyx100}`,
-                  borderRadius: 8,
-                  background: '#fff',
+                  fontSize: 32,
+                  marginBottom: 10
+                }}
+                aria-hidden="true"
+              >
+                💔
+              </div>
+              <h2
+                id="game-over-title"
+                style={{
+                  margin: '0 0 8px',
+                  color: C.onyx,
+                  fontSize: 24
+                }}
+              >
+                Game Over
+              </h2>
+              <p
+                style={{
+                  margin: '0 0 22px',
                   color: C.onyx600,
-                  fontWeight: 700,
-                  cursor: isRestarting ? 'wait' : 'pointer',
-                  opacity: isRestarting ? 0.7 : 1
+                  lineHeight: 1.5
                 }}
               >
-                {isRestarting ? 'Resetting...' : 'Back to Map'}
-              </button>
-              <button
-                type="button"
-                onClick={resetToFirstLevel}
-                disabled={isRestarting}
+               Your hearts are gone. Restart this island from Level 1?
+              </p>
+              {restartError && (
+                <p role="alert" style={{ margin: '-10px 0 16px', color: '#B91C1C', fontSize: 13 }}>
+                  {restartError}
+                </p>
+              )}
+              <div
                 style={{
-                  flex: 1,
-                  padding: '11px 14px',
-                  border: 'none',
-                  borderRadius: 8,
-                  background: C.purple,
-                  color: '#fff',
-                  fontWeight: 700,
-                  cursor: isRestarting ? 'wait' : 'pointer',
-                  opacity: isRestarting ? 0.7 : 1
+                  display: 'flex',
+                  gap: 10,
+                  justifyContent: 'center'
                 }}
               >
-                {isRestarting ? 'Restarting...' : 'Restart to Level 1'}
-              </button>
+                <button
+                  type="button"
+                  onClick={returnToMapAfterGameOver}
+                  disabled={isRestarting}
+                  style={{
+                    flex: 1,
+                    padding: '11px 14px',
+                    border: `1px solid ${C.onyx100}`,
+                    borderRadius: 8,
+                    background: '#fff',
+                    color: C.onyx600,
+                    fontWeight: 700,
+                    cursor: isRestarting ? 'wait' : 'pointer',
+                    opacity: isRestarting ? 0.7 : 1
+                  }}
+                >
+                  {isRestarting ? 'Resetting...' : 'Back to Map'}
+                </button>
+                <button
+                  type="button"
+                  onClick={resetToFirstLevel}
+                  disabled={isRestarting}
+                  style={{
+                    flex: 1,
+                    padding: '11px 14px',
+                    border: 'none',
+                    borderRadius: 8,
+                    background: C.purple,
+                    color: '#fff',
+                    fontWeight: 700,
+                    cursor: isRestarting ? 'wait' : 'pointer',
+                    opacity: isRestarting ? 0.7 : 1
+                  }}
+                >
+                  {isRestarting ? 'Restarting...' : 'Restart to Level 1'}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* TOAST */}
-      {toast && (
-        <Toast
-          msg={toast.msg}
-          tone={toast.tone}
-          key={toast.k}
-        />
-      )}
+        {/* TOAST */}
+        {toast && (
+          <Toast
+            msg={toast.msg}
+            tone={toast.tone}
+            key={toast.k}
+          />
+        )}
 
-      {completionSaveError && !completionCertificate && (
-        <div className="completion-save-error" role="alert">
-          <span>{completionSaveError}</span>
-          <button type="button" onClick={() => saveProgress()}>
-            Retry save
-          </button>
-        </div>
-      )}
+        {completionSaveError && !completionCertificate && (
+          <div className="completion-save-error" role="alert">
+            <span>{completionSaveError}</span>
+            <button type="button" onClick={() => saveProgress()}>
+              Retry save
+            </button>
+          </div>
+        )}
 
-      {/* ISLAND CLEARED */}
-      {islandCleared && (
-        <IslandClearedModal
-          islandName={`Island ${lesson.module_id}`}
-          xpGained={xpGained}
-          certificate={completionCertificate}
-          onGoToProfile={() => navigate('/profile')}
-          onReturn={() =>
-            navigate('/quest', {
-              state: {
-                islandId:
-                  getActiveIslandId(
-                    lesson,
-                    location
-                  )
-              }
-            })
-          }
-        />
-      )}
-    </div>
-  )
-}
+        {/* ISLAND CLEARED */}
+        {islandCleared && (
+          <IslandClearedModal
+            islandName={`Island ${lesson.module_id}`}
+            xpGained={xpGained}
+            certificate={completionCertificate}
+            onGoToProfile={() => navigate('/profile')}
+            onReturn={() =>
+              navigate('/quest', {
+                state: {
+                  islandId:
+                    getActiveIslandId(
+                      lesson,
+                      location
+                    )
+                }
+              })
+            }
+          />
+        )}
+      </div>
+    )
+  }

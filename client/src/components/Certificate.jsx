@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react'
-import { Award, Download, LockKeyhole, Printer, X } from 'lucide-react'
+import React, { useEffect, useState } from 'react'
+import { Award, Check, Copy, Download, LockKeyhole, Printer, X } from 'lucide-react'
 import './Certificate.css'
 
 export function formatCertificateDate(value) {
@@ -56,8 +56,30 @@ export function LockedCertificateCard() {
     </div>
   )
 }
-
+ 
 export function CertificateView({ certificate, onClose }) {
+  const [copied, setCopied] = useState(false)
+  const shareUrl = certificate
+    ? (certificate.verificationUrl || `${window.location.origin}/verify/${certificate.certificateId}`)
+    : ''
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl)
+    } catch {
+      const input = document.getElementById('certificate-share-input')
+      input?.select()
+      document.execCommand('copy')
+    }
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  useEffect(() => {
+    document.body.classList.add('certificate-print-mode')
+    return () => document.body.classList.remove('certificate-print-mode')
+  }, [])
+
+  if (!certificate) return null
   useEffect(() => {
     document.body.classList.add('certificate-print-mode')
     return () => document.body.classList.remove('certificate-print-mode')
@@ -79,6 +101,13 @@ export function CertificateView({ certificate, onClose }) {
           <h2 id="certificate-view-title">Your CodeQuest Certificate</h2>
           <button type="button" onClick={onClose} aria-label="Close certificate">
             <X size={19} aria-hidden="true" />
+          </button>
+        </div>
+                <div className="certificate-share">
+          <input id="certificate-share-input" readOnly value={shareUrl} onFocus={e => e.target.select()} />
+          <button type="button" onClick={copyLink}>
+            {copied ? <Check size={15} aria-hidden="true" /> : <Copy size={15} aria-hidden="true" />}
+            {copied ? 'Copied!' : 'Copy link'}
           </button>
         </div>
         <div className="certificate-print-root">
@@ -112,6 +141,7 @@ export function CertificateView({ certificate, onClose }) {
               </div>
             </div>
             <p className="certificate-art__id">CERTIFICATE ID&nbsp;&nbsp; {certificate.certificateId}</p>
+            <p className="certificate-art__id">VERIFY&nbsp;&nbsp; {shareUrl}</p>
             <p className="certificate-art__motto">&lt;/&gt;&nbsp; KEEP EXPLORING, KEEP BUILDING &nbsp;&lt;/&gt;</p>
           </div>
         </div>

@@ -194,6 +194,35 @@
   color: #fff8eb;
 }
 
+.certificate-share {
+  display: flex;
+  gap: 8px;
+  padding: 0 16px 12px;
+}
+.certificate-share input {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 11px;
+  border: 1px solid rgba(245, 213, 71, .35);
+  border-radius: 5px;
+  background: rgba(7, 22, 37, .6);
+  color: #fff8eb;
+  font-size: 12px;
+}
+.certificate-share button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px;
+  border: 1px solid #d7b648;
+  border-radius: 5px;
+  background: linear-gradient(180deg, #f5d547, #d7a82a);
+  color: #2b1a0e;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
 .certificate-print-root {
   padding: 0 16px 16px;
 }
@@ -490,7 +519,7 @@
 }
 
 @media print {
-  body.certificate-print-mode,
+   body.certificate-print-mode,
   body.certificate-print-mode #root {
     width: 100%;
     height: 100%;
@@ -528,6 +557,10 @@
     border-radius: 0 !important;
     background: #fff !important;
     box-shadow: none !important;
+  }
+
+    body.certificate-print-mode .certificate-share {
+    display: none !important;
   }
 
   body.certificate-print-mode .certificate-view__toolbar {
