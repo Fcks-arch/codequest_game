@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { GoogleLogin } from '@react-oauth/google';
 import { useAuth } from '../context/AuthContext';
@@ -24,6 +24,18 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
+  const [attemptsRemaining, setAttemptsRemaining] = useState(6);
+  const [lockoutSeconds, setLockoutSeconds] = useState(0);
+    useEffect(() => {
+  if (lockoutSeconds <= 0) return;
+
+  const timer = setInterval(() => {
+    setLockoutSeconds((seconds) => Math.max(0, seconds - 1));
+  }, 1000);
+
+  return () => clearInterval(timer);
+}, [lockoutSeconds]);
+
   const handle = async () => {
     setError('');
     setLoading(true);
@@ -45,13 +57,39 @@ export default function LoginPage() {
 
         navigate(user.role === 'instructor' ? '/teacher' : '/');
       }
-    } catch (err) {
-      setError(
-        err.response?.data?.message || 'Something went wrong.'
+    }  catch (err) {
+  const status = err.response?.status;
+  const data = err.response?.data;
+
+  if (mode === 'login') {
+    if (status === 429) {
+      // Backend says the login limit has been reached.
+      setAttemptsRemaining(0);
+
+      const retryAfter = Number(
+        data?.retryAfterSeconds ??
+        err.response?.headers?.['retry-after'] ??
+        60
       );
-    } finally {
-      setLoading(false);
+
+      setLockoutSeconds(
+        Number.isFinite(retryAfter) && retryAfter > 0
+          ? retryAfter
+          : 60
+      );
+    } else if (status === 401) {
+      // Incorrect email or password.
+      setAttemptsRemaining((remaining) =>
+        Math.max(0, remaining - 1)
+      );
     }
+  }
+
+  setError(data?.message || 'Something went wrong.');
+} finally {
+  setLoading(false);
+}
+
   };
 
   const handleGoogleSuccess = async (credentialResponse) => {
@@ -75,6 +113,8 @@ export default function LoginPage() {
 
   const switchMode = () => {
     setMode(mode === 'login' ? 'register' : 'login');
+    setAttemptsRemaining(6);
+    setLockoutSeconds(0);
     setError('');
     setForm({
       name: '',
@@ -83,6 +123,7 @@ export default function LoginPage() {
       section: '',
       role: 'student',
       teacherCode: ''
+      
     });
   };
 
@@ -316,17 +357,44 @@ export default function LoginPage() {
             </p>
           )}
 
-          {error && (
-            <div className="login-error">
-              {error}
-            </div>
-          )}
+          
+{mode === 'login' && (
+  <div
+    style={{
+      marginTop: 12,
+      marginBottom: 12,
+      fontSize: 13,
+      color: lockoutSeconds > 0 ? '#b42318' : '#555',
+      textAlign: 'center'
+    }}
+    aria-live="polite"
+  >
+    {lockoutSeconds > 0 ? (
+      <strong>
+        Login temporarily locked. Try again in{' '}
+        {String(Math.floor(lockoutSeconds / 60)).padStart(2, '0')}:
+        {String(lockoutSeconds % 60).padStart(2, '0')}
+      </strong>
+    ) : (
+      <span>
+        Failed login attempts remaining: {attemptsRemaining} of 6
+      </span>
+    )}
+  </div>
+)}
+
+{error && (
+  <div className="login-error" role="alert">
+    {error}
+  </div>
+)}
+
 
           <button
-            className="login-submit"
-            onClick={handle}
-            disabled={loading}
-          >
+  className="login-submit"
+  onClick={handle}
+  disabled={loading || (mode === 'login' && lockoutSeconds > 0)}
+>
             {loading
               ? 'Please wait…'
               : mode === 'login'

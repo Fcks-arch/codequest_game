@@ -13,6 +13,7 @@ const quizzes = require('../controllers/quizController');
 const reports = require('../controllers/reportController');
 const classController = require('../controllers/classController');
 const certificates = require('../controllers/certificateController');
+const loginLimiter = require('../middleware/loginLimiter');
 
 
 // ========================================================
@@ -20,7 +21,7 @@ const certificates = require('../controllers/certificateController');
 // ========================================================
 
 router.post('/auth/register', auth.register);
-router.post('/auth/login', auth.login);
+router.post('/auth/login', loginLimiter,auth.login);
 router.post('/auth/google', auth.googleAuth);
 
 router.post('/auth/forgot-password', auth.forgotPassword);
