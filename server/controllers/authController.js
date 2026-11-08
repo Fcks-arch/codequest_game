@@ -3,6 +3,7 @@ const jwt    = require('jsonwebtoken')
 const crypto = require('crypto')
 const db     = require('../config/db')
 const { OAuth2Client } = require('google-auth-library')
+const recordAudit = require('../utils/auditLog');
 
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID)
@@ -115,18 +116,57 @@ async function login(req, res) {
 
   try {
     const [rows] = await db.query('SELECT * FROM users WHERE email = ?', [email])
-    if (rows.length === 0)
-      return res.status(401).json({ message: 'Invalid email or password.' })
+    if (rows.length === 0) {
+  await recordAudit({
+    actorId: null,
+    action: 'LOGIN_FAILED',
+    recordType: 'user',
+    recordId: 'unknown',
+    details: {
+      attemptedEmail: email,
+      reason: 'ACCOUNT_NOT_FOUND'
+    }
+  })
 
+  return res.status(401).json({ message: 'Invalid email or password.' })
+}
     const user = rows[0]
-    if (!user.password)
-      return res.status(401).json({ message: 'This account uses Google Sign-In. Please log in with Google.' })
+    if (!user.password) {
+  await recordAudit({
+    actorId: user.id,
+    action: 'LOGIN_FAILED',
+    recordType: 'user',
+    recordId: user.id,
+    details: {
+      reason: 'GOOGLE_ACCOUNT'
+    }
+  })
 
+  return res.status(401).json({ message: 'This account uses Google Sign-In. Please log in with Google.' })
+}
     const match = await bcrypt.compare(password, user.password)
-    if (!match)
-      return res.status(401).json({ message: 'Invalid email or password.' })
+    if (!match) {
+  await recordAudit({
+    actorId: user.id,
+    action: 'LOGIN_FAILED',
+    recordType: 'user',
+    recordId: user.id,
+    details: {
+      reason: 'INVALID_PASSWORD'
+    }
+  })
 
+  return res.status(401).json({ message: 'Invalid email or password.' })
+}
     await db.query('UPDATE users SET last_login = CURDATE() WHERE id = ?', [user.id])
+
+    await recordAudit({
+      actorId: user.id,
+      action: 'LOGIN_SUCCESS',
+      recordType: 'user',
+      recordId: user.id,
+      details: {}
+    });
 
     const token = jwt.sign(
       { id: user.id, name: user.name, role: user.role },
@@ -189,6 +229,14 @@ async function googleAuth(req, res) {
     }
 
     await db.query('UPDATE users SET last_login = CURDATE() WHERE id = ?', [user.id])
+
+    await recordAudit({
+      actorId: user.id,
+      action: 'GOOGLE_LOGIN_SUCCESS',
+      recordType: 'user',
+      recordId: user.id,
+      details: { provider: 'google' }
+    });
 
     const token = jwt.sign(
       { id: user.id, name: user.name, role: user.role },
