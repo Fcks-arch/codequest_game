@@ -3,6 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { GoogleLogin } from '@react-oauth/google';
 import { useAuth } from '../context/AuthContext';
 import { Ico } from '../components/UI';
+import { Capacitor } from '@capacitor/core'
+import { SocialLogin } from '@capgo/capacitor-social-login'
 
 export default function LoginPage() {
   const { login, register, loginWithGoogle } = useAuth();
@@ -72,7 +74,42 @@ export default function LoginPage() {
       setLoading(false);
     }
   };
+const handleNativeGoogleLogin = async () => {
+  setError('');
+  setLoading(true);
 
+  try {
+    const result = await SocialLogin.login({
+      provider: 'google',
+      options: {}
+    });
+
+    const credential = result.result?.idToken;
+
+    if (!credential) {
+      throw new Error('Google did not return an ID token.');
+    }
+
+    const user = await loginWithGoogle(credential);
+
+    navigate(
+      user.role === 'instructor'
+        ? '/teacher'
+        : user.newAccount
+          ? '/island/1'
+          : '/'
+    );
+  } catch (err) {
+    console.error('Native Google sign-in error:', err);
+    setError(
+      err.response?.data?.message ||
+      err.message ||
+      'Google sign-in failed.'
+    );
+  } finally {
+    setLoading(false);
+  }
+};
   const switchMode = () => {
     setMode(mode === 'login' ? 'register' : 'login');
     setError('');
@@ -125,13 +162,23 @@ export default function LoginPage() {
           </h2>
 
           <div className="google-signin-container">
-            <GoogleLogin
-              onSuccess={handleGoogleSuccess}
-              onError={() =>
-                setError('Google sign-in was unsuccessful.')
-              }
-              width="308"
-            />
+  {Capacitor.isNativePlatform() ? (
+              <button
+                type="button"
+                onClick={handleNativeGoogleLogin}
+                disabled={loading}
+              >
+                Continue with Google
+              </button>
+            ) : (
+              <GoogleLogin
+                onSuccess={handleGoogleSuccess}
+                onError={() =>
+                  setError('Google sign-in was unsuccessful.')
+                }
+                width="308"
+              />
+            )}
           </div>
 
           <div className="login-divider">

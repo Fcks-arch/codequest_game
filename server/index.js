@@ -10,7 +10,15 @@ const PORT = process.env.PORT || 5000
 
 const clientOrigin = process.env.CLIENT_ORIGIN || 'http://localhost:5173'
 
-app.use(cors({ origin: [clientOrigin, 'http://localhost:5173'], credentials: true }))
+app.use(cors({
+  origin: [
+    clientOrigin,
+    'http://localhost:5173',
+    'http://localhost',
+    'https://localhost'
+  ],
+  credentials: true
+}))
 app.use(express.json())
 
 // HTTP request logging
@@ -34,6 +42,6 @@ app.use('/api', routes)
 // Error handler must be last
 app.use(errorHandler)
 
-app.listen(PORT, () => {
-  logger.info('SERVER_STARTED', { port: PORT })
+app.listen(PORT, '0.0.0.0', () => {
+  logger.info('SERVER_STARTED', { port: PORT, host: '0.0.0.0' })
 })
